@@ -1,0 +1,783 @@
+﻿/**
+ * HA Tools Panel v2.1 — Unified UI/UX with Home, Settings, and consistent design
+ * Author: MacSiem
+ */
+class HAToolsPanel extends HTMLElement {
+  constructor() {
+    super();
+    this.attachShadow({ mode: 'open' });
+    this._hass = null;
+    this._rendered = false;
+    this._activeView = 'home';
+    this._activeToolId = null;
+    this._cardInstance = null;
+    this._settings = this._loadSettings();
+  }
+
+  static get TOOLS() {
+    return [
+      { id: 'trace-viewer', name: 'Trace Viewer', icon: '\u{1F9EC}', tag: 'ha-trace-viewer', desc: 'Przeglądaj i analizuj ślady automatyzacji', repo: 'MacSiem/ha-trace-viewer', category: 'debug' },
+      { id: 'device-health', name: 'Device Health', icon: '\u{1F3E5}', tag: 'ha-device-health', desc: 'Monitoruj stan urządzeń, baterii i sieci', repo: 'MacSiem/ha-device-health', category: 'monitor' },
+      { id: 'automation-analyzer', name: 'Automation Analyzer', icon: '\u{1F4CA}', tag: 'ha-automation-analyzer', desc: 'Analizuj wydajność i problemy automatyzacji', repo: 'MacSiem/ha-automation-analyzer', category: 'debug' },
+      { id: 'backup-manager', name: 'Backup Manager', icon: '\u{1F4BE}', tag: 'ha-backup-manager', desc: 'Zarządzaj kopiami zapasowymi', repo: 'MacSiem/ha-backup-manager', category: 'system' },
+      { id: 'network-map', name: 'Network Map', icon: '\u{1F310}', tag: 'ha-network-map', desc: 'Wizualizuj mapę sieci urządzeń', repo: 'MacSiem/ha-network-map', category: 'monitor' },
+      { id: 'smart-reports', name: 'Smart Reports', icon: '\u{1F4C8}', tag: 'ha-smart-reports', desc: 'Generuj inteligentne raporty', repo: 'MacSiem/ha-smart-reports', category: 'reports' },
+      { id: 'energy-optimizer', name: 'Energy Optimizer', icon: '\u26A1', tag: 'ha-energy-optimizer', desc: 'Optymalizuj zużycie energii', repo: 'MacSiem/ha-energy-optimizer', category: 'monitor' },
+      { id: 'sentence-manager', name: 'Sentence Manager', icon: '\u{1F5E3}\uFE0F', tag: 'ha-sentence-manager', desc: 'Zarządzaj zdaniami głosowymi', repo: 'MacSiem/ha-sentence-manager', category: 'system' },
+      { id: 'chore-tracker', name: 'Chore Tracker', icon: '\u{1F3E0}', tag: 'ha-chore-tracker', desc: 'Śledzenie obowiązków domowych', repo: 'MacSiem/ha-chore-tracker', category: 'life' },
+      { id: 'baby-tracker', name: 'Baby Tracker', icon: '\u{1F37C}', tag: 'ha-baby-tracker', desc: 'Śledzenie aktywności dziecka', repo: 'MacSiem/ha-baby-tracker', category: 'life' },
+      { id: 'cry-analyzer', name: 'Cry Analyzer', icon: '\u{1F476}', tag: 'ha-cry-analyzer', desc: 'Analiza płaczu dziecka AI', repo: 'MacSiem/ha-cry-analyzer', category: 'life' },
+      { id: 'data-exporter', name: 'Data Exporter', icon: '\u{1F4E4}', tag: 'ha-data-exporter', desc: 'Eksportuj dane z Home Assistant', repo: 'MacSiem/ha-data-exporter', category: 'system' },
+    ];
+  }
+
+  static get CATEGORIES() {
+    return {
+      monitor: { name: 'Monitoring', icon: '\u{1F4CB}' },
+      debug: { name: 'Debugowanie', icon: '\u{1F527}' },
+      system: { name: 'System', icon: '\u2699\uFE0F' },
+      reports: { name: 'Raporty', icon: '\u{1F4C4}' },
+      life: { name: 'Życie', icon: '\u{1F3E1}' },
+    };
+  }
+
+  static get CSS() {
+    return `
+      :host {
+        display: block; height: 100vh; overflow: hidden;
+        --spacing-xs: 4px; --spacing-sm: 8px; --spacing-md: 12px; --spacing-lg: 16px; --spacing-xl: 24px;
+        --radius-sm: 4px; --radius-md: 6px; --radius-lg: 8px; --radius-xl: 12px;
+        --font-title: 18px; --font-heading: 14px; --font-body: 13px; --font-meta: 12px; --font-small: 11px;
+        --color-success: #4caf50; --color-error: #f44336; --color-warning: #ff9800; --color-info: #2196f3;
+        --transition: all 0.2s ease;
+      }
+      * { box-sizing: border-box; }
+
+      /* Layout */
+      .panel { display: flex; height: 100vh; background: var(--primary-background-color, #1c1c1c); color: var(--primary-text-color, #e1e1e1); font-family: Roboto, sans-serif; }
+
+      /* Sidebar */
+      .sidebar { width: 240px; background: var(--card-background-color, #1e1e1e); border-right: 1px solid var(--divider-color, #333); display: flex; flex-direction: column; flex-shrink: 0; }
+      .sidebar-header { padding: var(--spacing-lg); font-size: var(--font-title); font-weight: 600; border-bottom: 1px solid var(--divider-color, #333); display: flex; align-items: center; gap: var(--spacing-sm); }
+      .sidebar-header .version { font-size: var(--font-small); color: var(--secondary-text-color, #9e9e9e); font-weight: 400; margin-left: auto; }
+      .sidebar-scroll { flex: 1; overflow-y: auto; }
+      .sidebar-footer { border-top: 1px solid var(--divider-color, #333); }
+
+      .nav-section { font-size: var(--font-small); color: var(--secondary-text-color, #9e9e9e); text-transform: uppercase; letter-spacing: 0.5px; padding: var(--spacing-lg) var(--spacing-lg) var(--spacing-xs); font-weight: 600; }
+      .nav-item { display: flex; align-items: center; gap: 10px; padding: 10px var(--spacing-lg); cursor: pointer; font-size: var(--font-body); color: var(--secondary-text-color, #9e9e9e); transition: var(--transition); user-select: none; }
+      .nav-item:hover { background: var(--table-row-alternative-background-color, #2a2a2a); color: var(--primary-text-color, #e1e1e1); }
+      .nav-item.active { background: color-mix(in srgb, var(--primary-color, #03a9f4) 15%, transparent); color: var(--primary-color, #03a9f4); font-weight: 500; }
+      .nav-item.unavailable { opacity: 0.35; cursor: default; }
+      .nav-item .nav-icon { width: 20px; text-align: center; font-size: 15px; flex-shrink: 0; }
+      .nav-item .nav-badge { margin-left: auto; background: var(--primary-color, #03a9f4); color: white; border-radius: 10px; padding: 1px 7px; font-size: 10px; font-weight: 600; }
+
+      /* Main */
+      .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+      .toolbar { padding: var(--spacing-md) var(--spacing-lg); background: var(--card-background-color, #1e1e1e); border-bottom: 1px solid var(--divider-color, #333); display: flex; align-items: center; gap: var(--spacing-md); min-height: 48px; }
+      .toolbar-title { font-size: var(--font-title); font-weight: 500; flex: 1; }
+      .content { flex: 1; overflow: auto; padding: 0; }
+
+      /* Buttons */
+      .btn { padding: var(--spacing-sm) var(--spacing-md); border-radius: var(--radius-sm); border: none; font-size: var(--font-body); font-weight: 500; cursor: pointer; transition: var(--transition); display: inline-flex; align-items: center; gap: var(--spacing-sm); text-decoration: none; }
+      .btn-primary { background: var(--primary-color, #03a9f4); color: white; }
+      .btn-primary:hover { opacity: 0.9; box-shadow: 0 2px 8px rgba(0,0,0,0.2); }
+      .btn-secondary { background: transparent; color: var(--primary-text-color, #e1e1e1); border: 1px solid var(--divider-color, #333); }
+      .btn-secondary:hover { border-color: var(--primary-color, #03a9f4); color: var(--primary-color, #03a9f4); }
+      .btn-sm { padding: var(--spacing-xs) var(--spacing-sm); font-size: var(--font-meta); }
+      .btn-icon { background: none; border: 1px solid var(--divider-color, #333); color: var(--primary-text-color); padding: 6px 12px; border-radius: var(--radius-md); cursor: pointer; font-size: var(--font-body); }
+      .btn-icon:hover { border-color: var(--primary-color); }
+
+      /* Empty state */
+      .empty { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--secondary-text-color); gap: var(--spacing-sm); }
+      .empty .big { font-size: 48px; opacity: 0.5; }
+
+      /* ===== HOME VIEW ===== */
+      .home-view { padding: var(--spacing-xl); max-width: 1200px; }
+      .home-section { margin-bottom: var(--spacing-xl); }
+      .home-section-title { font-size: 15px; font-weight: 600; color: var(--primary-text-color, #e1e1e1); margin-bottom: var(--spacing-md); display: flex; align-items: center; gap: var(--spacing-sm); }
+      .home-section-title .count { font-size: var(--font-meta); color: var(--secondary-text-color); font-weight: 400; }
+
+      /* Installed cards grid */
+      .tools-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--spacing-md); }
+      .tool-card { background: var(--card-background-color, #1e1e1e); border: 1px solid var(--divider-color, #333); border-radius: var(--radius-lg); padding: var(--spacing-lg); cursor: pointer; transition: var(--transition); display: flex; flex-direction: column; gap: var(--spacing-sm); }
+      .tool-card:hover { border-color: var(--primary-color, #03a9f4); transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+      .tool-card-header { display: flex; align-items: center; gap: var(--spacing-sm); }
+      .tool-card-icon { font-size: 22px; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; background: color-mix(in srgb, var(--primary-color, #03a9f4) 10%, transparent); border-radius: var(--radius-md); flex-shrink: 0; }
+      .tool-card-name { font-size: var(--font-heading); font-weight: 600; color: var(--primary-text-color, #e1e1e1); }
+      .tool-card-desc { font-size: var(--font-meta); color: var(--secondary-text-color, #9e9e9e); line-height: 1.4; flex: 1; }
+      .tool-card-footer { display: flex; align-items: center; justify-content: space-between; margin-top: var(--spacing-xs); }
+      .tool-card-category { font-size: var(--font-small); color: var(--secondary-text-color); background: var(--divider-color, #333); padding: 2px 8px; border-radius: 10px; }
+      .tool-card-status { font-size: var(--font-small); color: var(--color-success); font-weight: 600; }
+
+      /* Uninstalled list */
+      .uninstalled-list { display: flex; flex-direction: column; gap: var(--spacing-sm); }
+      .uninstalled-item { display: flex; align-items: center; gap: var(--spacing-md); padding: var(--spacing-md) var(--spacing-lg); background: var(--card-background-color, #1e1e1e); border: 1px solid var(--divider-color, #333); border-radius: var(--radius-md); }
+      .uninstalled-item .ui-icon { font-size: 18px; width: 32px; text-align: center; opacity: 0.5; }
+      .uninstalled-item .ui-name { font-size: var(--font-body); font-weight: 500; color: var(--primary-text-color); }
+      .uninstalled-item .ui-desc { font-size: var(--font-meta); color: var(--secondary-text-color); flex: 1; }
+      .uninstalled-item .btn { flex-shrink: 0; }
+
+      /* Donation section */
+      .donate-section { background: linear-gradient(135deg, color-mix(in srgb, var(--primary-color, #03a9f4) 8%, transparent), color-mix(in srgb, #e91e63 6%, transparent)); border: 1px solid var(--divider-color, #333); border-radius: var(--radius-lg); padding: var(--spacing-xl); display: flex; align-items: center; gap: var(--spacing-xl); }
+      .donate-text { flex: 1; }
+      .donate-text h3 { font-size: 15px; font-weight: 600; margin: 0 0 var(--spacing-sm); color: var(--primary-text-color); }
+      .donate-text p { font-size: var(--font-body); color: var(--secondary-text-color); margin: 0; line-height: 1.5; }
+      .donate-buttons { display: flex; gap: var(--spacing-sm); flex-shrink: 0; }
+      .donate-btn { padding: var(--spacing-sm) var(--spacing-lg); border-radius: var(--radius-md); font-size: var(--font-body); font-weight: 500; cursor: pointer; transition: var(--transition); text-decoration: none; display: inline-flex; align-items: center; gap: var(--spacing-sm); border: none; }
+      .donate-btn.coffee { background: #FFDD00; color: #000; }
+      .donate-btn.coffee:hover { background: #e6c700; }
+      .donate-btn.paypal { background: #0070BA; color: white; }
+      .donate-btn.paypal:hover { background: #005ea6; }
+
+      /* ===== SETTINGS VIEW ===== */
+      .settings-view { padding: var(--spacing-xl); max-width: 900px; }
+      .settings-group { margin-bottom: var(--spacing-xl); background: var(--card-background-color, #1e1e1e); border: 1px solid var(--divider-color, #333); border-radius: var(--radius-lg); overflow: hidden; }
+      .settings-group-header { padding: var(--spacing-md) var(--spacing-lg); background: var(--divider-color, #333); font-size: var(--font-heading); font-weight: 600; display: flex; align-items: center; gap: var(--spacing-sm); cursor: pointer; user-select: none; }
+      .settings-group-header .chevron { margin-left: auto; font-size: 12px; transition: transform 0.2s; }
+      .settings-group-header.collapsed .chevron { transform: rotate(-90deg); }
+      .settings-group-body { padding: 0; }
+      .settings-group-body.hidden { display: none; }
+
+      .setting-row { display: flex; align-items: center; padding: var(--spacing-md) var(--spacing-lg); border-bottom: 1px solid var(--divider-color, #333); gap: var(--spacing-md); }
+      .setting-row:last-child { border-bottom: none; }
+      .setting-info { flex: 1; }
+      .setting-label { font-size: var(--font-body); font-weight: 500; color: var(--primary-text-color); }
+      .setting-desc { font-size: var(--font-meta); color: var(--secondary-text-color); margin-top: 2px; }
+      .setting-control { flex-shrink: 0; }
+
+      .setting-select { padding: 6px 10px; border: 1px solid var(--divider-color, #333); border-radius: var(--radius-sm); background: var(--primary-background-color, #1c1c1c); color: var(--primary-text-color); font-size: var(--font-body); cursor: pointer; }
+      .setting-toggle { position: relative; width: 44px; height: 24px; cursor: pointer; }
+      .setting-toggle input { opacity: 0; width: 0; height: 0; }
+      .setting-toggle .slider { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: var(--divider-color, #555); border-radius: 12px; transition: var(--transition); }
+      .setting-toggle .slider:before { content: ''; position: absolute; height: 18px; width: 18px; left: 3px; bottom: 3px; background: white; border-radius: 50%; transition: var(--transition); }
+      .setting-toggle input:checked + .slider { background: var(--primary-color, #03a9f4); }
+      .setting-toggle input:checked + .slider:before { transform: translateX(20px); }
+
+      .setting-subsection { font-size: var(--font-meta); font-weight: 600; color: var(--secondary-text-color); text-transform: uppercase; letter-spacing: 0.5px; padding: var(--spacing-md) var(--spacing-lg) var(--spacing-xs); background: color-mix(in srgb, var(--divider-color, #333) 40%, transparent); }
+
+      .setting-input { padding: 6px 10px; border: 1px solid var(--divider-color, #333); border-radius: var(--radius-sm); background: var(--primary-background-color, #1c1c1c); color: var(--primary-text-color); font-size: var(--font-body); width: 80px; text-align: center; }
+      .setting-input:focus { outline: none; border-color: var(--primary-color, #03a9f4); }
+
+      .setting-action-row { display: flex; align-items: center; padding: var(--spacing-md) var(--spacing-lg); gap: var(--spacing-md); border-bottom: 1px solid var(--divider-color, #333); }
+      .setting-action-row:last-child { border-bottom: none; }
+
+      .btn-apply { background: var(--primary-color, #03a9f4); color: white; padding: 8px 20px; border-radius: var(--radius-md); border: none; font-size: var(--font-body); font-weight: 600; cursor: pointer; transition: var(--transition); display: inline-flex; align-items: center; gap: var(--spacing-sm); }
+      .btn-apply:hover { opacity: 0.9; box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
+      .btn-apply:disabled { opacity: 0.5; cursor: not-allowed; }
+
+      .status-msg { font-size: var(--font-meta); padding: 8px 14px; border-radius: var(--radius-md); margin-top: var(--spacing-sm); display: none; }
+      .status-msg.visible { display: block; }
+      .status-msg.success { background: color-mix(in srgb, var(--color-success) 15%, transparent); color: var(--color-success); border: 1px solid color-mix(in srgb, var(--color-success) 30%, transparent); }
+      .status-msg.error { background: color-mix(in srgb, var(--color-error) 15%, transparent); color: var(--color-error); border: 1px solid color-mix(in srgb, var(--color-error) 30%, transparent); }
+      .status-msg.info { background: color-mix(in srgb, var(--color-info) 15%, transparent); color: var(--color-info); border: 1px solid color-mix(in srgb, var(--color-info) 30%, transparent); }
+
+      .trace-current-info { font-size: var(--font-meta); color: var(--secondary-text-color); padding: var(--spacing-sm) var(--spacing-lg); background: color-mix(in srgb, var(--divider-color, #333) 40%, transparent); display: flex; align-items: center; gap: var(--spacing-sm); }
+      .trace-current-info .val { color: var(--primary-text-color); font-weight: 600; }
+    `;
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    if (!this._rendered) {
+      this._rendered = true;
+      this._render();
+    }
+    if (this._cardInstance) {
+      if (this._cardInstance.tagName.toLowerCase() === 'ha-cry-analyzer') {
+        this._cardInstance.hassObj = hass;
+      } else {
+        this._cardInstance.hass = hass;
+      }
+    }
+  }
+
+  set panel(panel) { this._config = panel?.config || {}; }
+  set narrow(narrow) { this._narrow = narrow; }
+  set route(route) { this._route = route; }
+
+  _loadSettings() {
+    try {
+      const stored = localStorage.getItem('ha-tools-settings');
+      return stored ? JSON.parse(stored) : {};
+    } catch { return {}; }
+  }
+
+  _saveSettings() {
+    try { localStorage.setItem('ha-tools-settings', JSON.stringify(this._settings)); } catch {}
+  }
+
+  _getSetting(key, defaultVal) {
+    return this._settings[key] !== undefined ? this._settings[key] : defaultVal;
+  }
+
+  _setSetting(key, value) {
+    this._settings[key] = value;
+    this._saveSettings();
+  }
+
+  _getToolStatus() {
+    const tools = HAToolsPanel.TOOLS;
+    const available = tools.filter(t => customElements.get(t.tag));
+    const unavailable = tools.filter(t => !customElements.get(t.tag));
+    return { tools, available, unavailable };
+  }
+
+  _render() {
+    const { available, unavailable } = this._getToolStatus();
+
+    this.shadowRoot.innerHTML = `
+      <style>${HAToolsPanel.CSS}</style>
+      <div class="panel">
+        <div class="sidebar">
+          <div class="sidebar-header">
+            <span>\u{1F6E0}\uFE0F</span> HA Tools
+            <span class="version">v2.1</span>
+          </div>
+          <div class="sidebar-scroll">
+            <div class="nav-item active" data-view="home">
+              <span class="nav-icon">\u{1F3E0}</span>
+              <span>Home</span>
+              <span class="nav-badge">${available.length}/${HAToolsPanel.TOOLS.length}</span>
+            </div>
+
+            <div class="nav-section">Narzędzia (${available.length})</div>
+            ${available.map(t => `
+              <div class="nav-item" data-tool="${t.id}" data-tag="${t.tag}">
+                <span class="nav-icon">${t.icon}</span>
+                <span>${t.name}</span>
+              </div>
+            `).join('')}
+
+            ${unavailable.length > 0 ? `
+              <div class="nav-section">Niedostępne (${unavailable.length})</div>
+              ${unavailable.map(t => `
+                <div class="nav-item unavailable" title="Nie zainstalowane">
+                  <span class="nav-icon">${t.icon}</span>
+                  <span>${t.name}</span>
+                </div>
+              `).join('')}
+            ` : ''}
+          </div>
+          <div class="sidebar-footer">
+            <div class="nav-item" data-view="settings">
+              <span class="nav-icon">\u2699\uFE0F</span>
+              <span>Ustawienia</span>
+            </div>
+          </div>
+        </div>
+        <div class="main">
+          <div class="toolbar">
+            <div class="toolbar-title" id="title">\u{1F3E0} Home</div>
+            <button class="btn-icon" id="refreshBtn" style="display:none">\u{1F504} Odśwież</button>
+          </div>
+          <div class="content" id="content"></div>
+        </div>
+      </div>
+    `;
+
+    this._bindNavigation();
+    this._showHome();
+  }
+
+  _bindNavigation() {
+    // Home and Settings navigation
+    this.shadowRoot.querySelectorAll('.nav-item[data-view]').forEach(item => {
+      item.addEventListener('click', () => {
+        const view = item.dataset.view;
+        this._setActiveNav(item);
+        if (view === 'home') this._showHome();
+        else if (view === 'settings') this._showSettings();
+      });
+    });
+
+    // Tool navigation
+    this.shadowRoot.querySelectorAll('.nav-item[data-tool]').forEach(item => {
+      item.addEventListener('click', () => {
+        this._setActiveNav(item);
+        this._loadTool(item.dataset.tool, item.dataset.tag, item.textContent.trim());
+      });
+    });
+
+    // Refresh button
+    this.shadowRoot.getElementById('refreshBtn').addEventListener('click', () => {
+      if (this._activeView === 'tool' && this._activeToolId) {
+        const item = this.shadowRoot.querySelector(`.nav-item[data-tool="${this._activeToolId}"]`);
+        if (item) this._loadTool(this._activeToolId, item.dataset.tag, item.textContent.trim());
+      }
+    });
+  }
+
+  _setActiveNav(activeItem) {
+    this.shadowRoot.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+    activeItem.classList.add('active');
+  }
+
+  _showHome() {
+    this._activeView = 'home';
+    this._activeToolId = null;
+    this._cardInstance = null;
+    const title = this.shadowRoot.getElementById('title');
+    title.textContent = '\u{1F3E0} Home';
+    this.shadowRoot.getElementById('refreshBtn').style.display = 'none';
+
+    const { available, unavailable } = this._getToolStatus();
+    const cats = HAToolsPanel.CATEGORIES;
+    const content = this.shadowRoot.getElementById('content');
+
+    content.innerHTML = `
+      <div class="home-view">
+        <div class="home-section">
+          <div class="home-section-title">
+            \u2705 Zainstalowane narzędzia <span class="count">(${available.length} z ${HAToolsPanel.TOOLS.length})</span>
+          </div>
+          ${available.length > 0 ? `
+            <div class="tools-grid">
+              ${available.map(t => `
+                <div class="tool-card" data-tool="${t.id}" data-tag="${t.tag}">
+                  <div class="tool-card-header">
+                    <div class="tool-card-icon">${t.icon}</div>
+                    <div class="tool-card-name">${t.name}</div>
+                  </div>
+                  <div class="tool-card-desc">${t.desc}</div>
+                  <div class="tool-card-footer">
+                    <span class="tool-card-category">${cats[t.category]?.icon || ''} ${cats[t.category]?.name || t.category}</span>
+                    <span class="tool-card-status">\u2705 Aktywne</span>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          ` : '<div style="color:var(--secondary-text-color);font-size:13px;">Brak zainstalowanych narzędzi.</div>'}
+        </div>
+
+        ${unavailable.length > 0 ? `
+          <div class="home-section">
+            <div class="home-section-title">
+              \u{1F4E6} Dostępne do instalacji <span class="count">(${unavailable.length})</span>
+            </div>
+            <div class="uninstalled-list">
+              ${unavailable.map(t => `
+                <div class="uninstalled-item">
+                  <div class="ui-icon">${t.icon}</div>
+                  <div class="ui-name">${t.name}</div>
+                  <div class="ui-desc">${t.desc}</div>
+                  <a class="btn btn-secondary btn-sm" href="https://github.com/${t.repo}" target="_blank" rel="noopener">
+                    GitHub
+                  </a>
+                  <a class="btn btn-primary btn-sm hacs-install" data-repo="${t.repo}">
+                    \u{1F4E5} Zainstaluj (HACS)
+                  </a>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        ` : ''}
+
+        <div class="home-section">
+          <div class="donate-section">
+            <div class="donate-text">
+              <h3>\u2764\uFE0F Wesprzyj rozwój HA Tools</h3>
+              <p>Jeśli HA Tools ułatwia Ci życie z Home Assistant, rozważ wsparcie projektu. Każda kawa motywuje do dalszego rozwoju!</p>
+            </div>
+            <div class="donate-buttons">
+              <a class="donate-btn coffee" href="https://buymeacoffee.com/macsiem" target="_blank" rel="noopener">
+                \u2615 Buy Me a Coffee
+              </a>
+              <a class="donate-btn paypal" href="https://www.paypal.com/donate/?hosted_button_id=Y967H4PLRBN8W" target="_blank" rel="noopener">
+                \u{1F4B3} PayPal
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Bind card clicks
+    content.querySelectorAll('.tool-card[data-tool]').forEach(card => {
+      card.addEventListener('click', () => {
+        const toolId = card.dataset.tool;
+        const tag = card.dataset.tag;
+        const navItem = this.shadowRoot.querySelector(`.nav-item[data-tool="${toolId}"]`);
+        if (navItem) {
+          this._setActiveNav(navItem);
+          this._loadTool(toolId, tag, navItem.textContent.trim());
+        }
+      });
+    });
+
+    // HACS install buttons
+    content.querySelectorAll('.hacs-install').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        const repo = btn.dataset.repo;
+        // Open HACS custom repo dialog via HA
+        const hacsUrl = `/hacs/repository/${repo.replace('/', '%2F')}`;
+        window.open(hacsUrl, '_blank');
+      });
+    });
+  }
+
+  _showSettings() {
+    this._activeView = 'settings';
+    this._activeToolId = null;
+    this._cardInstance = null;
+    const title = this.shadowRoot.getElementById('title');
+    title.textContent = '\u2699\uFE0F Ustawienia';
+    this.shadowRoot.getElementById('refreshBtn').style.display = 'none';
+
+    const { available } = this._getToolStatus();
+    const content = this.shadowRoot.getElementById('content');
+    const lang = this._getSetting('language', 'pl');
+    const animations = this._getSetting('animations', true);
+    const compactMode = this._getSetting('compactMode', false);
+    const defaultTool = this._getSetting('defaultTool', 'home');
+
+    content.innerHTML = `
+      <div class="settings-view">
+
+        <!-- General Settings -->
+        <div class="settings-group">
+          <div class="settings-group-header" data-group="general">
+            \u2699\uFE0F Ustawienia ogólne
+            <span class="chevron">\u25BC</span>
+          </div>
+          <div class="settings-group-body" data-body="general">
+            <div class="setting-row">
+              <div class="setting-info">
+                <div class="setting-label">Język</div>
+                <div class="setting-desc">Język interfejsu panelu</div>
+              </div>
+              <div class="setting-control">
+                <select class="setting-select" data-setting="language">
+                  <option value="pl" ${lang === 'pl' ? 'selected' : ''}>Polski</option>
+                  <option value="en" ${lang === 'en' ? 'selected' : ''}>English</option>
+                </select>
+              </div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-info">
+                <div class="setting-label">Domyślny widok</div>
+                <div class="setting-desc">Co pokazać po otwarciu HA Tools</div>
+              </div>
+              <div class="setting-control">
+                <select class="setting-select" data-setting="defaultTool">
+                  <option value="home" ${defaultTool === 'home' ? 'selected' : ''}>Home</option>
+                  ${available.map(t => `<option value="${t.id}" ${defaultTool === t.id ? 'selected' : ''}>${t.name}</option>`).join('')}
+                </select>
+              </div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-info">
+                <div class="setting-label">Animacje</div>
+                <div class="setting-desc">Włącz animacje przejść</div>
+              </div>
+              <div class="setting-control">
+                <label class="setting-toggle">
+                  <input type="checkbox" data-setting="animations" ${animations ? 'checked' : ''}>
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-info">
+                <div class="setting-label">Tryb kompaktowy</div>
+                <div class="setting-desc">Mniejsze odstępy, mniej miejsca na ekranie</div>
+              </div>
+              <div class="setting-control">
+                <label class="setting-toggle">
+                  <input type="checkbox" data-setting="compactMode" ${compactMode ? 'checked' : ''}>
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Trace Viewer — Backend Settings -->
+        <div class="settings-group">
+          <div class="settings-group-header" data-group="trace-backend">
+            \u{1F9EC} Trace Viewer — Przechowywanie
+            <span class="chevron">\u25BC</span>
+          </div>
+          <div class="settings-group-body" data-body="trace-backend">
+            <div class="trace-current-info">
+              \u{1F4CA} Obecne ustawienie HA: <span class="val">stored_traces = 5</span> (domyślne per automatyzacja)
+            </div>
+
+            <div class="setting-subsection">Ilość traces</div>
+            <div class="setting-row">
+              <div class="setting-info">
+                <div class="setting-label">Przechowuj N ostatnich traces</div>
+                <div class="setting-desc">Ile trace'ów HA ma przechowywać na automatyzację (domyślnie 5). Zmiana dotyczy WSZYSTKICH automatyzacji.</div>
+              </div>
+              <div class="setting-control">
+                <select class="setting-select" id="storedTracesCount">
+                  <option value="5" ${this._getSetting('trace.storedCount', 20) == 5 ? 'selected' : ''}>5 (domyślne)</option>
+                  <option value="10" ${this._getSetting('trace.storedCount', 20) == 10 ? 'selected' : ''}>10</option>
+                  <option value="20" ${this._getSetting('trace.storedCount', 20) == 20 ? 'selected' : ''}>20</option>
+                  <option value="50" ${this._getSetting('trace.storedCount', 20) == 50 ? 'selected' : ''}>50</option>
+                  <option value="100" ${this._getSetting('trace.storedCount', 20) == 100 ? 'selected' : ''}>100</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="setting-subsection">Filtr czasowy (frontend)</div>
+            <div class="setting-row">
+              <div class="setting-info">
+                <div class="setting-label">Maksymalny wiek traces</div>
+                <div class="setting-desc">Ukryj traces starsze niż wybrany okres (filtrowanie po stronie frontendu, nie usuwa danych z HA)</div>
+              </div>
+              <div class="setting-control">
+                <select class="setting-select" data-setting="trace.maxAge" id="traceMaxAge">
+                  <option value="0" ${this._getSetting('trace.maxAge', '0') == '0' ? 'selected' : ''}>Bez limitu</option>
+                  <option value="3600" ${this._getSetting('trace.maxAge', '0') == '3600' ? 'selected' : ''}>1 godzina</option>
+                  <option value="21600" ${this._getSetting('trace.maxAge', '0') == '21600' ? 'selected' : ''}>6 godzin</option>
+                  <option value="43200" ${this._getSetting('trace.maxAge', '0') == '43200' ? 'selected' : ''}>12 godzin</option>
+                  <option value="86400" ${this._getSetting('trace.maxAge', '0') == '86400' ? 'selected' : ''}>24 godziny</option>
+                  <option value="604800" ${this._getSetting('trace.maxAge', '0') == '604800' ? 'selected' : ''}>7 dni</option>
+                  <option value="2592000" ${this._getSetting('trace.maxAge', '0') == '2592000' ? 'selected' : ''}>30 dni</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="setting-action-row">
+              <button class="btn-apply" id="applyTracesBtn">\u{1F4BE} Zastosuj stored_traces do wszystkich automatyzacji</button>
+            </div>
+            <div style="padding: 0 var(--spacing-lg) var(--spacing-md);">
+              <div class="status-msg" id="traceStatus"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Per-addon settings -->
+        ${available.map(t => {
+          const prefix = t.id;
+          const refreshInterval = this._getSetting(`${prefix}.refreshInterval`, 30);
+          const showNotifications = this._getSetting(`${prefix}.showNotifications`, true);
+          const dashboardCard = this._getSetting(`${prefix}.dashboardCard`, true);
+          return `
+            <div class="settings-group">
+              <div class="settings-group-header" data-group="${prefix}">
+                ${t.icon} ${t.name}
+                <span class="chevron">\u25BC</span>
+              </div>
+              <div class="settings-group-body" data-body="${prefix}">
+                <div class="setting-subsection">Wyświetlanie</div>
+                <div class="setting-row">
+                  <div class="setting-info">
+                    <div class="setting-label">Pokazuj w dashboardzie</div>
+                    <div class="setting-desc">Widoczność karty na stronie głównej</div>
+                  </div>
+                  <div class="setting-control">
+                    <label class="setting-toggle">
+                      <input type="checkbox" data-setting="${prefix}.dashboardCard" ${dashboardCard ? 'checked' : ''}>
+                      <span class="slider"></span>
+                    </label>
+                  </div>
+                </div>
+
+                <div class="setting-subsection">Działanie</div>
+                <div class="setting-row">
+                  <div class="setting-info">
+                    <div class="setting-label">Interwał odświeżania (sek)</div>
+                    <div class="setting-desc">Jak często odświeżać dane</div>
+                  </div>
+                  <div class="setting-control">
+                    <select class="setting-select" data-setting="${prefix}.refreshInterval">
+                      <option value="10" ${refreshInterval == 10 ? 'selected' : ''}>10s</option>
+                      <option value="30" ${refreshInterval == 30 ? 'selected' : ''}>30s</option>
+                      <option value="60" ${refreshInterval == 60 ? 'selected' : ''}>60s</option>
+                      <option value="300" ${refreshInterval == 300 ? 'selected' : ''}>5min</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="setting-row">
+                  <div class="setting-info">
+                    <div class="setting-label">Powiadomienia</div>
+                    <div class="setting-desc">Pokaż powiadomienia z tego narzędzia</div>
+                  </div>
+                  <div class="setting-control">
+                    <label class="setting-toggle">
+                      <input type="checkbox" data-setting="${prefix}.showNotifications" ${showNotifications ? 'checked' : ''}>
+                      <span class="slider"></span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+          `;
+        }).join('')}
+
+      </div>
+    `;
+
+    // Bind settings controls
+    content.querySelectorAll('.setting-select').forEach(select => {
+      select.addEventListener('change', () => {
+        this._setSetting(select.dataset.setting, select.value);
+      });
+    });
+
+    content.querySelectorAll('.setting-toggle input').forEach(toggle => {
+      toggle.addEventListener('change', () => {
+        this._setSetting(toggle.dataset.setting, toggle.checked);
+      });
+    });
+
+    // Collapsible groups
+    content.querySelectorAll('.settings-group-header').forEach(header => {
+      header.addEventListener('click', () => {
+        const group = header.dataset.group;
+        const body = content.querySelector(`.settings-group-body[data-body="${group}"]`);
+        if (body) {
+          body.classList.toggle('hidden');
+          header.classList.toggle('collapsed');
+        }
+      });
+    });
+
+    // Trace storage — Apply button
+    const applyBtn = content.querySelector('#applyTracesBtn');
+    const traceStatus = content.querySelector('#traceStatus');
+    const storedTracesSelect = content.querySelector('#storedTracesCount');
+    if (applyBtn && storedTracesSelect) {
+      applyBtn.addEventListener('click', async () => {
+        const count = parseInt(storedTracesSelect.value);
+        this._setSetting('trace.storedCount', count);
+        applyBtn.disabled = true;
+        applyBtn.textContent = '\u23F3 Stosowanie...';
+        await this._applyStoredTraces(count, traceStatus);
+        applyBtn.disabled = false;
+        applyBtn.textContent = '\u{1F4BE} Zastosuj stored_traces do wszystkich automatyzacji';
+      });
+    }
+
+    // Load current stored_traces value from first automation
+    if (this._hass) {
+      const infoEl = content.querySelector('.trace-current-info');
+      this._loadCurrentStoredTraces(infoEl, storedTracesSelect);
+    }
+  }
+
+  async _loadCurrentStoredTraces(infoEl, selectEl) {
+    try {
+      const automations = Object.values(this._hass.states)
+        .filter(s => s.entity_id.startsWith('automation.'))
+        .map(s => s.attributes.id)
+        .filter(Boolean);
+      if (automations.length === 0) return;
+
+      // Sample first 5 automations to check their stored_traces
+      const sample = automations.slice(0, 5);
+      const values = [];
+      for (const id of sample) {
+        try {
+          const config = await this._hass.callApi('GET', `config/automation/config/${id}`);
+          values.push(config.stored_traces || 5);
+        } catch { values.push(5); }
+      }
+
+      const unique = [...new Set(values)];
+      const current = unique.length === 1 ? unique[0] : `${Math.min(...values)}-${Math.max(...values)}`;
+      if (infoEl) {
+        infoEl.innerHTML = `\u{1F4CA} Obecne ustawienie HA: <span class="val">stored_traces = ${current}</span> (sprawdzono ${sample.length} z ${automations.length} automatyzacji)`;
+      }
+      // Pre-select current value if all are the same
+      if (unique.length === 1 && selectEl) {
+        const opt = selectEl.querySelector(`option[value="${unique[0]}"]`);
+        if (opt) opt.selected = true;
+      }
+    } catch (e) {
+      console.warn('[HA Tools] Could not load stored_traces info:', e);
+    }
+  }
+
+  async _applyStoredTraces(count, statusEl) {
+    if (!this._hass) {
+      statusEl.textContent = '\u274C Brak połączenia z Home Assistant';
+      statusEl.className = 'status-msg visible error';
+      return;
+    }
+    statusEl.textContent = '\u23F3 Pobieranie listy automatyzacji...';
+    statusEl.className = 'status-msg visible info';
+
+    try {
+      // Get all automations
+      const automations = Object.values(this._hass.states)
+        .filter(s => s.entity_id.startsWith('automation.'))
+        .map(s => s.attributes.id)
+        .filter(Boolean);
+
+      let updated = 0;
+      let errors = 0;
+
+      for (const id of automations) {
+        try {
+          statusEl.textContent = `\u23F3 Aktualizacja ${updated + errors + 1}/${automations.length}...`;
+          // Get current config
+          const config = await this._hass.callApi('GET', `config/automation/config/${id}`);
+          // Update stored_traces
+          config.stored_traces = parseInt(count);
+          // Save back
+          await this._hass.callApi('PUT', `config/automation/config/${id}`, config);
+          updated++;
+        } catch (e) {
+          console.warn(`[HA Tools] Failed to update automation ${id}:`, e);
+          errors++;
+        }
+      }
+
+      if (errors === 0) {
+        statusEl.textContent = `\u2705 Zaktualizowano ${updated} automatyzacji — stored_traces: ${count}`;
+        statusEl.className = 'status-msg visible success';
+      } else {
+        statusEl.textContent = `\u26A0\uFE0F Zaktualizowano ${updated}, błędy: ${errors}`;
+        statusEl.className = 'status-msg visible error';
+      }
+    } catch (e) {
+      statusEl.textContent = `\u274C Błąd: ${e.message}`;
+      statusEl.className = 'status-msg visible error';
+    }
+  }
+
+  _loadTool(toolId, tag, name) {
+    this._activeView = 'tool';
+    this._activeToolId = toolId;
+    this._cardInstance = null;
+
+    const tool = HAToolsPanel.TOOLS.find(t => t.id === toolId);
+    const title = this.shadowRoot.getElementById('title');
+    title.textContent = `${tool ? tool.icon : ''} ${name}`;
+    this.shadowRoot.getElementById('refreshBtn').style.display = '';
+
+    const content = this.shadowRoot.getElementById('content');
+    content.innerHTML = `<div class="empty"><div class="big">\u23F3</div><div>Ładowanie...</div></div>`;
+
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        try {
+          content.innerHTML = '';
+          const card = document.createElement(tag);
+
+          if (typeof card.setConfig === 'function') {
+            card.setConfig({ title: name, panel_mode: true });
+          }
+
+          if (tag === 'ha-cry-analyzer') {
+            card.hassObj = this._hass;
+          } else {
+            card.hass = this._hass;
+          }
+
+          card.style.cssText = 'display:block; min-height:calc(100vh - 56px);';
+          content.appendChild(card);
+          this._cardInstance = card;
+        } catch (e) {
+          content.innerHTML = `<div class="empty"><div class="big">\u26A0\uFE0F</div><div>Błąd: ${e.message}</div></div>`;
+        }
+      }, 100);
+    });
+  }
+}
+
+customElements.define('ha-tools-panel', HAToolsPanel);
+console.log('[HA Tools Panel v2.1] Registered successfully');
