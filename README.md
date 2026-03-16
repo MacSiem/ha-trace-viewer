@@ -1,3 +1,34 @@
-# HA Trace Viewer\n\nVisual automation trace debugger for Home Assistant. Displays automation execution traces with step-by-step visualization, timing analysis, and error highlighting.\n\n## Installation\n\n### HACS (recommended)\n\n1. Open HACS in Home Assistant\n2. Go to **Frontend** section\n3. Click **â®** (three dots) > **Custom repositories**\n4. Add `https://github.com/MacSiem/ha-trace-viewer` as **Dashboard** (or **Plugin**)\n5. Install **HA Trace Viewer**\n6. Restart Home Assistant\n\n### Manual\n\nCopy the contents to `/config/www/community/ha-trace-viewer/`\n\n## Design\n\nUses **Modern Bento Light Mode** design system:\n- Background: `#F8FAFC`\n- Primary: `#3B82F6`\n- Text: `#1E293B`\n- Border: `#E2E8F0`\n- Font: Inter, 16px border-radius, smooth animations\n\n## License\n\nMIT\n
+# HA Trace Viewer
 
-![Trace Viewer Screenshot](screenshot.png)
+![HA Trace Viewer Screenshot](screenshot.png)
+
+Visual automation trace debugger for Home Assistant. Displays automation execution traces with step-by-step visualization, timing analysis, and error highlighting.
+
+## Installation
+
+### HACS (recommended)
+
+1. Open HACS in Home Assistant
+2. Go to **Frontend** section
+3. Click the three dots menu > **Custom repositories**
+4. Add `https://github.com/MacSiem/ha-trace-viewer` as **Dashboard**
+5. Install **HA Trace Viewer**
+6. Restart Home Assistant
+
+### Manual
+
+Copy the contents to `/config/www/community/ha-trace-viewer/`
+
+## Design
+
+Uses **Modern Bento Light Mode** design system:
+
+- Background: `#F8FAFC`
+- Primary: `#3B82F6`
+- Text: `#1E293B`
+- Border: `#E2E8F0`
+- Font: Inter, 16px border-radius, smooth animations
+
+## License
+
+MIT
