@@ -1,33 +1,35 @@
-# HA Trace Viewer
+# 🧬 Trace Viewer
 
-![HA Trace Viewer Screenshot](screenshot.png)
+Browse and analyze Home Assistant automation traces with filtering, search and export
 
-Visual automation trace debugger for Home Assistant. Displays automation execution traces with step-by-step visualization, timing analysis, and error highlighting.
+Part of the [HA Tools](https://github.com/MacSiem/ha-tools-panel) collection for Home Assistant.
 
 ## Installation
 
 ### HACS (recommended)
-
 1. Open HACS in Home Assistant
-2. Go to **Frontend** section
-3. Click the three dots menu > **Custom repositories**
-4. Add `https://github.com/MacSiem/ha-trace-viewer` as **Dashboard**
-5. Install **HA Trace Viewer**
-6. Restart Home Assistant
+2. Go to Frontend > Explore & Download Repositories
+3. Search for "Trace Viewer"
+4. Install and restart Home Assistant
 
 ### Manual
+1. Download `ha-trace-viewer.js` from this repository
+2. Copy to `/config/www/community/ha-trace-viewer/`
+3. Add as a Lovelace resource
 
-Copy the contents to `/config/www/community/ha-trace-viewer/`
+## Screenshot
 
-## Design
+![Screenshot](screenshot.png)
 
-Uses **Modern Bento Light Mode** design system:
+## Changelog
 
-- Background: `#F8FAFC`
-- Primary: `#3B82F6`
-- Text: `#1E293B`
-- Border: `#E2E8F0`
-- Font: Inter, 16px border-radius, smooth animations
+### v2.3 (2026-03-17)
+- Bento Light Mode UI redesign (Inter font, blue accent #3B82F6)
+- Throttled hass updates (5s) to prevent UI lag
+- Stable pagination and data persistence
+- Fixed dual-script loading (customElements.define guard)
+- CSS custom properties for theming (--bento-primary, --bento-bg, etc.)
+- Improved readability and layout consistency
 
 ## License
 
