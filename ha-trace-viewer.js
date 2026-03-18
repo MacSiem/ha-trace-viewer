@@ -1633,8 +1633,37 @@ class HATraceViewer extends HTMLElement {
 
 /* Responsive */
 @media (max-width: 1200px) { .pan-right { display: none; } }
-@media (max-width: 900px) { .pan-left { display: none !important; } .pan-center.expanded { min-width: 100%; } }
-@media (max-width: 768px) { .stats { grid-template-columns: repeat(2, 1fr); } .panels { flex-direction: column; } }
+@media (max-width: 900px) {
+  .pan-left { display: none !important; }
+  .pan-center.expanded { min-width: 100%; }
+  .pan-center { min-width: 0; flex: 1; }
+  .pan-right { display: none; }
+}
+@media (max-width: 768px) {
+  .stats { grid-template-columns: repeat(2, 1fr); }
+  .panels { flex-direction: column; }
+  .pan-center { min-width: 0; width: 100%; }
+  .card { margin: 0 !important; }
+  .toolbar { flex-wrap: wrap; gap: 6px; padding: 10px 12px; }
+  .toolbar .btn-s { font-size: 11px; padding: 5px 8px; }
+  .view-switch { font-size: 11px; }
+  .view-switch button { padding: 5px 8px; }
+  .tr-item { padding: 8px 10px; }
+  .tr-info { min-width: 0; overflow: hidden; }
+  .tr-auto { font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
+  .tr-trig { font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; }
+  .tr-dur { font-size: 11px; min-width: 40px; }
+  .pag { flex-wrap: wrap; gap: 4px; padding: 8px; }
+  .pag-btn { font-size: 11px; padding: 4px 8px; }
+  .pag-size { font-size: 11px; }
+}
+@media (max-width: 480px) {
+  .stats { grid-template-columns: 1fr; }
+  .toolbar { padding: 8px; }
+  .tr-auto { max-width: 140px; }
+  .tr-trig { max-width: 150px; }
+  .sinput-sm { max-width: 120px; }
+}
 </style>`;
   }
 
