@@ -1280,7 +1280,27 @@ class HATraceViewer extends HTMLElement {
   --shadow-md: 0 4px 12px rgba(0,0,0,0.06);
   --tr: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   display: block;
-  color-scheme: light !important;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :host {
+    --bg: #1a1a2e;
+    --cbg: #16213e;
+    --tc: #e2e8f0;
+    --ts: #94a3b8;
+    --dc: #334155;
+    --pc: #3B82F6;
+    --ec: #f87171;
+    --wc: #fbbf24;
+    --sc: #34d399;
+  }
+}
+:host-context([data-themes]) {
+  --bg: var(--lovelace-background, var(--primary-background-color, #F8FAFC));
+  --cbg: var(--card-background-color, var(--ha-card-background, #FFFFFF));
+  --tc: var(--primary-text-color, #1E293B);
+  --ts: var(--secondary-text-color, #64748B);
+  --dc: var(--divider-color, #E2E8F0);
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
