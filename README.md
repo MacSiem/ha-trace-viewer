@@ -1,36 +1,64 @@
 # 🧬 Trace Viewer
 
-Browse and analyze Home Assistant automation traces with filtering, search and export
+Inspect automation traces — step-by-step debug visualization.
 
-Part of the [HA Tools](https://github.com/MacSiem/ha-tools-panel) collection for Home Assistant.
+[![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1+-blue.svg?logo=homeassistant)](https://www.home-assistant.io/) [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE) [![Version](https://img.shields.io/badge/Version-4.0.0-success.svg)](#changelog)
 
-## Installation
+> Part of the [HA Tools](https://github.com/MacSiem) ecosystem — split into individual HACS-installable plugins.
 
-### HACS (recommended)
-1. Open HACS in Home Assistant
-2. Go to Frontend > Explore & Download Repositories
-3. Search for "Trace Viewer"
-4. Install and restart Home Assistant
+## Installation (HACS)
 
-### Manual
-1. Download `ha-trace-viewer.js` from this repository
-2. Copy to `/config/www/community/ha-trace-viewer/`
-3. Add as a Lovelace resource
+1. Open HACS → Frontend → ⋮ → **Custom repositories**
+2. Repository URL: `https://github.com/MacSiem/ha-trace-viewer` — Category: **Lovelace**
+3. Install **Trace Viewer** from HACS
+4. Restart Home Assistant
 
-## Screenshot
+## Usage
 
-![Screenshot](screenshot.png)
+### Lovelace card
+
+```yaml
+type: custom:ha-trace-viewer
+```
+
+### Optional sidebar panel (`configuration.yaml`)
+
+```yaml
+panel_custom:
+  - name: ha-trace-viewer
+    sidebar_title: Trace Viewer
+    sidebar_icon: mdi:home-assistant
+    url_path: ha-trace-viewer
+    js_url: /local/community/ha-trace-viewer/ha-trace-viewer.js
+    embed_iframe: false
+    config: {}
+```
+
+After restart, **Trace Viewer** appears in the HA sidebar.
+
+## Features
+
+- Inspect automation traces — step-by-step debug visualization.
+- Bundled Bento Design System (light + dark mode, mobile-friendly)
+- Self-contained — no shared HA Tools dependency
+- HA `frontend/set_user_data` cross-device persistence (with `localStorage` cache fallback)
+
+## Privacy
+
+- No external network calls, no telemetry, no CDN-hosted assets
+- All data stays on your Home Assistant instance
 
 ## Changelog
 
-### v2.3 (2026-03-17)
-- Bento Light Mode UI redesign (Inter font, blue accent #3B82F6)
-- Throttled hass updates (5s) to prevent UI lag
-- Stable pagination and data persistence
-- Fixed dual-script loading (customElements.define guard)
-- CSS custom properties for theming (--bento-primary, --bento-bg, etc.)
-- Improved readability and layout consistency
+See [CHANGELOG.md](CHANGELOG.md).
+
+## Support
+
+If this tool makes your Home Assistant life easier, consider supporting development:
+
+- [☕ Buy Me a Coffee](https://buymeacoffee.com/macsiem)
+- [💳 PayPal](https://www.paypal.com/donate/?hosted_button_id=Y967H4PLRBN8W)
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).

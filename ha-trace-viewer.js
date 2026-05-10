@@ -1,6 +1,512 @@
+/* HA Tools split — ha-trace-viewer v4.0.0 (2026-05-10) — single-tool standalone repo */
+(function() {
+'use strict';
+
+// -- HA Tools Persistence (stub -- full impl in ha-tools-panel.js) --
+window._haToolsPersistence = window._haToolsPersistence || { _cache: {}, _hass: null, setHass(h) { this._hass = h; }, async save(k, d) { try { localStorage.setItem('ha-trace-viewer-' + k, JSON.stringify(d)); } catch(e) { console.debug('[ha-trace-viewer] caught:', e); } }, async load(k) { try { const r = localStorage.getItem('ha-trace-viewer-' + k); return r ? JSON.parse(r) : null; } catch(e) { return null; } }, loadSync(k) { try { const r = localStorage.getItem('ha-trace-viewer-' + k); return r ? JSON.parse(r) : null; } catch(e) { return null; } } };
+
+// -- HA Tools Escape helper (fallback) --
+const _esc = window._haToolsEsc || ((s) => String(s == null ? '' : s).replace(/[&<>"\']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])));
+
+/* ===== HA Tools split — inline shared infrastructure ===== */
+// Bento Design System CSS (inline copy — keeps tool standalone)
+if (typeof window !== 'undefined' && !window.HAToolsBentoCSS) {
+  window.HAToolsBentoCSS = `
+/* ═══════════════════════════════════════════════
+   HA Tools — Bento Design System v1.0
+   ═══════════════════════════════════════════════ */
+
+/* ── CSS Custom Properties ───────────────────── */
+:host {
+  /* Primary palette */
+  --bento-primary: #3B82F6;
+  --bento-primary-hover: #2563EB;
+  --bento-primary-light: rgba(59, 130, 246, 0.08);
+  --bento-success: #10B981;
+  --bento-success-light: rgba(16, 185, 129, 0.08);
+  --bento-error: #EF4444;
+  --bento-error-light: rgba(239, 68, 68, 0.08);
+  --bento-warning: #F59E0B;
+  --bento-warning-light: rgba(245, 158, 11, 0.08);
+
+  /* Theme — maps to HA theme vars with light fallbacks */
+  --bento-bg: var(--primary-background-color, #F8FAFC);
+  --bento-card: var(--card-background-color, #FFFFFF);
+  --bento-border: var(--divider-color, #E2E8F0);
+  --bento-text: var(--primary-text-color, #1E293B);
+  --bento-text-secondary: var(--secondary-text-color, #64748B);
+  --bento-text-muted: var(--disabled-text-color, #94A3B8);
+
+  /* Radii */
+  --bento-radius-xs: 6px;
+  --bento-radius-sm: 10px;
+  --bento-radius-md: 16px;
+
+  /* Shadows */
+  --bento-shadow-sm: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.06);
+  --bento-shadow-md: 0 4px 12px rgba(0,0,0,0.05), 0 2px 4px rgba(0,0,0,0.04);
+  --bento-shadow-lg: 0 8px 25px rgba(0,0,0,0.06), 0 4px 10px rgba(0,0,0,0.04);
+
+  /* Transition */
+  --bento-transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Typography */
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  display: block;
+  color: var(--bento-text);
+}
+
+/* ── Dark mode ───────────────────────────────── */
+@media (prefers-color-scheme: dark) {
+  :host {
+    --bento-bg: var(--primary-background-color, #1a1a2e);
+    --bento-card: var(--card-background-color, #16213e);
+    --bento-border: var(--divider-color, #2a2a4a);
+    --bento-text: var(--primary-text-color, #e0e0e0);
+    --bento-text-secondary: var(--secondary-text-color, #a0a0b0);
+    --bento-text-muted: var(--disabled-text-color, #6a6a7a);
+    --bento-shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
+    --bento-shadow-md: 0 4px 12px rgba(0,0,0,0.4);
+    --bento-primary-light: rgba(59,130,246,0.15);
+    --bento-success-light: rgba(16,185,129,0.15);
+    --bento-error-light: rgba(239,68,68,0.15);
+    --bento-warning-light: rgba(245,158,11,0.15);
+    color-scheme: dark !important;
+  }
+  .card, .card-container, .main-card, .exporter-card, .security-card, .reports-card, .storage-card, .chore-card, .cry-card, .backup-card, .network-card, .sentence-card, .energy-card, .panel-card {
+    background: var(--bento-card) !important; color: var(--bento-text) !important; border-color: var(--bento-border) !important;
+  }
+  input, select, textarea { background: var(--bento-bg); color: var(--bento-text); border-color: var(--bento-border); }
+  .stat, .stat-card, .summary-card, .metric-card, .kpi-card, .health-card { background: var(--bento-bg); border-color: var(--bento-border); }
+  .tab-content, .section { color: var(--bento-text); }
+  table th { background: var(--bento-bg); color: var(--bento-text-secondary); border-color: var(--bento-border); }
+  table td { color: var(--bento-text); border-color: var(--bento-border); }
+  tr:hover td { background: rgba(59,130,246,0.08); }
+  .empty-state, .no-data { color: var(--bento-text-secondary); }
+  .schedule-section, .settings-section, .detail-panel, .details, .device-detail { background: var(--bento-bg); border-color: var(--bento-border); }
+  .addon-list, .content-item { background: rgba(255,255,255,0.05); }
+  .chart-container { background: var(--bento-bg); border-color: var(--bento-border); }
+  pre, code { background: #1e293b !important; color: #e2e8f0 !important; }
+}
+
+/* ── Reset ───────────────────────────────────── */
+* { box-sizing: border-box; }
+
+/* ── Main Card Wrapper ───────────────────────── */
+.card {
+  background: var(--bento-card);
+  border: 1px solid var(--bento-border);
+  border-radius: var(--bento-radius-md);
+  box-shadow: var(--bento-shadow-sm);
+  color: var(--bento-text);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+/* ── Header ──────────────────────────────────── */
+.header {
+  padding: 16px 20px 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.header-icon { font-size: 22px; }
+.header-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--bento-text);
+}
+.header-badge {
+  margin-left: auto;
+  background: var(--bento-border);
+  color: var(--bento-text-secondary);
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 20px;
+  font-weight: 500;
+}
+.content { padding: 16px 20px 20px; }
+
+/* ── Tabs (Bento unified) ────────────────────── */
+.tabs, .tab-bar, .tab-nav, .tab-header {
+  display: flex !important;
+  gap: 4px !important;
+  border-bottom: 2px solid var(--bento-border, var(--divider-color, #334155)) !important;
+  padding: 0 4px !important;
+  margin-bottom: 20px !important;
+  overflow-x: auto !important; overflow-y: hidden !important; -webkit-overflow-scrolling: touch !important;
+  flex-wrap: nowrap !important;
+}
+.tab, .tab-btn, .tab-button, .dtab {
+  padding: 10px 18px !important;
+  border: none !important;
+  background: transparent !important;
+  cursor: pointer !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  font-family: 'Inter', sans-serif !important;
+  color: var(--bento-text-secondary, var(--secondary-text-color, #94A3B8)) !important;
+  border-bottom: 2px solid transparent !important;
+  margin-bottom: -2px !important;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  white-space: nowrap !important;
+  border-radius: 0 !important;
+  flex: none !important;
+}
+.tab:hover, .tab-btn:hover, .tab-button:hover, .dtab:hover {
+  color: var(--bento-primary, #3B82F6) !important;
+  background: rgba(59, 130, 246, 0.08) !important;
+}
+.tab.active, .tab-btn.active, .tab-button.active, .dtab.active {
+  color: var(--bento-primary, #3B82F6) !important;
+  border-bottom-color: var(--bento-primary, #3B82F6) !important;
+  background: rgba(59, 130, 246, 0.04) !important;
+  font-weight: 600 !important;
+}
+
+/* ── Tab content animation ───────────────────── */
+.tab-content {
+  display: block;
+}
+.tab-content.active {
+  animation: bentoFadeIn 0.3s ease-out;
+}
+@keyframes bentoFadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Stat / KPI cards ────────────────────────── */
+.stat-card, .stat-item, .metric-card, .kpi-card {
+  background: var(--bento-card, var(--card-background-color, #1E293B)) !important;
+  border: 1px solid var(--bento-border, var(--divider-color, #334155)) !important;
+  border-radius: var(--bento-radius-sm, 10px) !important;
+  padding: 16px !important;
+  text-align: center !important;
+  transition: var(--bento-transition);
+}
+.stat-card:hover, .stat-item:hover, .metric-card:hover, .kpi-card:hover {
+  box-shadow: var(--bento-shadow-md);
+}
+.stat-icon { font-size: 20px; margin-bottom: 4px; }
+.stat-value, .stat-val, .metric-value, .kpi-val {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--bento-text);
+}
+.stat-label, .stat-lbl, .metric-label, .kpi-lbl {
+  font-size: 11px;
+  color: var(--bento-text-secondary);
+  margin-top: 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 500;
+}
+
+/* ── Overview grid (2×2 stat layout) ─────────── */
+.overview-grid, .stats-grid, .summary-grid, .stat-cards, .kpi-grid, .metrics-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+/* ── Section headers ─────────────────────────── */
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--bento-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  margin: 12px 0 8px;
+}
+
+/* ── Loading / Empty / Info ──────────────────── */
+.loading-bar {
+  height: 3px;
+  background: linear-gradient(90deg, var(--bento-primary), transparent);
+  border-radius: 2px;
+  animation: bentoLoad 1s infinite;
+  margin-bottom: 8px;
+}
+@keyframes bentoLoad { 0% { background-position: 0; } 100% { background-position: 200px; } }
+
+.empty-state, .no-data, .no-results {
+  text-align: center;
+  color: var(--bento-text-secondary);
+  padding: 32px 16px;
+  font-size: 13px;
+  background: var(--bento-bg);
+  border-radius: var(--bento-radius-sm);
+}
+.info-note, .tip-box {
+  font-size: 12px;
+  color: var(--bento-text-secondary);
+  background: var(--bento-bg);
+  border-radius: var(--bento-radius-sm);
+  padding: 8px 10px;
+  border-left: 3px solid var(--bento-primary);
+  margin-top: 8px;
+}
+.last-updated {
+  font-size: 11px;
+  color: var(--bento-text-muted);
+  text-align: right;
+  margin-top: 8px;
+}
+
+/* ── Buttons ─────────────────────────────────── */
+.refresh-btn {
+  background: var(--bento-border);
+  border: none;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 11px;
+  color: var(--bento-text-secondary);
+  cursor: pointer;
+  font-weight: 500;
+  transition: var(--bento-transition);
+}
+.refresh-btn:hover { background: var(--bento-primary); color: white; }
+
+.toggle-btn, .action-btn {
+  background: var(--bento-primary);
+  border: none;
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-size: 12px;
+  color: white;
+  cursor: pointer;
+  font-weight: 500;
+  transition: var(--bento-transition);
+}
+.toggle-btn:hover, .action-btn:hover { opacity: .85; }
+
+.send-btn, .btn-primary {
+  width: 100%;
+  background: var(--bento-primary);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--bento-transition);
+}
+.send-btn:hover, .btn-primary:hover {
+  background: var(--bento-primary-hover);
+  transform: translateY(-1px);
+}
+.send-btn:active, .btn-primary:active { transform: translateY(0); }
+.send-btn:disabled, .btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* ── Badges / Status ─────────────────────────── */
+.badge, .status-badge, .tag, .chip {
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  display: inline-block;
+}
+.badge-ok, .badge-success { background: var(--bento-success-light); color: var(--bento-success); }
+.badge-er, .badge-error   { background: var(--bento-error-light);   color: var(--bento-error); }
+.badge-warn, .badge-warning { background: var(--bento-warning-light); color: var(--bento-warning); }
+.badge-info { background: var(--bento-primary-light); color: var(--bento-primary); }
+
+/* ── Count badges (inline) ───────────────────── */
+.count-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 20px;
+}
+.error-badge { background: rgba(239,68,68,0.13); color: var(--bento-error); }
+.warn-badge  { background: rgba(245,158,11,0.13); color: var(--bento-warning); }
+.info-badge  { background: rgba(59,130,246,0.13); color: var(--bento-primary); }
+.ok-badge    { background: rgba(16,185,129,0.13); color: var(--bento-success); }
+
+/* ── Tables ───────────────────────────────────── */
+table { width: 100%; border-collapse: separate; border-spacing: 0; }
+th {
+  background: var(--bento-bg);
+  color: var(--bento-text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 10px 14px;
+  text-align: left;
+  border-bottom: 2px solid var(--bento-border);
+}
+td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--bento-border);
+  color: var(--bento-text);
+  font-size: 13px;
+}
+tr:hover td { background: var(--bento-primary-light); }
+
+/* ── Forms / Inputs ──────────────────────────── */
+input, select, textarea {
+  padding: 8px 12px;
+  border: 1.5px solid var(--bento-border);
+  border-radius: var(--bento-radius-xs);
+  background: var(--bento-card);
+  color: var(--bento-text);
+  font-size: 13px;
+  font-family: 'Inter', sans-serif;
+  transition: var(--bento-transition);
+  outline: none;
+}
+input:focus, select:focus, textarea:focus {
+  border-color: var(--bento-primary);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/* ── Code blocks ─────────────────────────────── */
+code {
+  background: var(--bento-border);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 12px;
+}
+pre {
+  background: #1e293b;
+  color: #e2e8f0;
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  overflow-x: auto;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ── Grid layouts ────────────────────────────── */
+.schedule-grid, .send-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.schedule-card, .send-card, .info-card {
+  background: var(--bento-bg);
+  border: 1px solid var(--bento-border);
+  border-radius: var(--bento-radius-sm);
+  padding: 14px;
+}
+
+/* ── Log entries ─────────────────────────────── */
+.log-entry {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 4px 6px;
+  padding: 8px;
+  border-radius: var(--bento-radius-sm);
+  margin-bottom: 4px;
+  font-size: 12px;
+  min-width: 0;
+  overflow: hidden;
+}
+.error-entry { background: var(--bento-error-light); border: 1px solid rgba(239,68,68,0.13); }
+.warn-entry  { background: var(--bento-warning-light); border: 1px solid rgba(245,158,11,0.13); }
+.log-time { color: var(--bento-text-muted); flex-shrink: 0; }
+.log-domain {
+  font-weight: 600;
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  word-break: break-all;
+}
+.error-domain { color: var(--bento-error); }
+.warn-domain  { color: var(--bento-warning); }
+.log-msg {
+  color: var(--bento-text-secondary);
+  flex-basis: 100%;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  min-width: 0;
+}
+
+/* ── Send status ─────────────────────────────── */
+.send-status {
+  padding: 10px 14px;
+  border-radius: var(--bento-radius-sm);
+  margin-top: 12px;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: center;
+}
+.send-status.sending { background: var(--bento-primary-light); color: var(--bento-primary); }
+.send-status.success { background: var(--bento-success-light); color: var(--bento-success); }
+.send-status.error   { background: var(--bento-error-light);   color: var(--bento-error); }
+
+/* ── Scrollbar ───────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--bento-border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--bento-text-muted); }
+
+/* ── Animations ──────────────────────────────── */
+@keyframes bentoSpin { to { transform: rotate(360deg); } }
+@keyframes bentoPulse { 0%,100% { opacity: 1; } 50% { opacity: .5; } }
+
+/* ── Mobile — 768 px ─────────────────────────── */
+@media (max-width: 768px) {
+  .content { padding: 12px; }
+  .tabs { flex-wrap: nowrap !important; overflow-x: auto !important; -webkit-overflow-scrolling: touch !important; gap: 2px !important; }
+  .tab, .tab-button, .tab-btn { padding: 6px 10px !important; font-size: 12px !important; white-space: nowrap !important; }
+  .overview-grid, .stats-grid, .summary-grid, .stat-cards, .kpi-grid, .metrics-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .stat-value, .stat-val, .kpi-val, .metric-val { font-size: 18px !important; }
+  .stat-label, .stat-lbl, .kpi-lbl, .metric-lbl { font-size: 10px !important; }
+  .send-grid, .schedule-grid { grid-template-columns: 1fr; }
+  .log-entry { flex-wrap: wrap; gap: 2px 6px; }
+  .log-domain { max-width: 60%; font-size: 11px; }
+  .log-msg { flex-basis: 100%; max-width: 100%; overflow-wrap: anywhere; font-size: 11px; }
+  pre { white-space: pre-wrap; word-break: break-all; max-width: calc(100vw - 80px); overflow-x: auto; }
+  .panels, .board { flex-direction: column; }
+  .column { min-width: unset; }
+  h2 { font-size: 18px; }
+  h3 { font-size: 15px; }
+}
+
+/* ── Mobile — 480 px ─────────────────────────── */
+@media (max-width: 480px) {
+  .tabs { gap: 1px !important; }
+  .tab, .tab-button, .tab-btn { padding: 5px 8px !important; font-size: 11px !important; }
+  .overview-grid, .stats-grid, .summary-grid { grid-template-columns: 1fr 1fr; }
+  .stat-value, .stat-val, .kpi-val { font-size: 16px !important; }
+}
+`;
+}
+// XSS escape singleton (idempotent)
+if (typeof window !== 'undefined') {
+  window._haToolsEsc = window._haToolsEsc || (function(){
+    var MAP = {};
+    MAP[String.fromCharCode(38)] = '&amp;';
+    MAP[String.fromCharCode(60)] = '&lt;';
+    MAP[String.fromCharCode(62)] = '&gt;';
+    MAP[String.fromCharCode(34)] = '&quot;';
+    MAP[String.fromCharCode(39)] = '&#39;';
+    return function(s){ return typeof s === 'string' ? s.replace(/[&<>"']/g, function(c){ return MAP[c]; }) : (s == null ? '' : s); };
+  })();
+}
+/* ============================================================ */
+
 class HATraceViewer extends HTMLElement {
   constructor() {
     super();
+    this._lang = (navigator.language || '').startsWith('pl') ? 'pl' : 'en';
     this.attachShadow({ mode: 'open' });
     this.config = {};
     this._hass = null;
@@ -36,7 +542,6 @@ class HATraceViewer extends HTMLElement {
     this.selectedTraceIds = new Set();
     this.selectedAutoIds = new Set();
     this.selectMode = false;
-    this.selectMode = false;
     this.tracePage = 0;
     this.tracePageSize = this._loadPageSize();
 
@@ -59,14 +564,14 @@ class HATraceViewer extends HTMLElement {
     try {
       const s = localStorage.getItem('ha-tools-settings');
       if (s) { const p = JSON.parse(s); if (p['trace-viewer.pageSize']) return parseInt(p['trace-viewer.pageSize']); }
-      const tv = localStorage.getItem('ha-trace-viewer-pageSize');
+      const tv = localStorage.getItem('ha-tools-trace-viewer-pageSize');
       if (tv) return parseInt(tv);
     } catch {}
     return 15;
   }
 
   _savePageSize(size) {
-    try { localStorage.setItem('ha-trace-viewer-pageSize', String(size)); } catch {}
+    try { localStorage.setItem('ha-tools-trace-viewer-pageSize', String(size)); } catch {}
     try {
       const s = localStorage.getItem('ha-tools-settings');
       const settings = s ? JSON.parse(s) : {};
@@ -75,13 +580,15 @@ class HATraceViewer extends HTMLElement {
     } catch {}
   }
 
-  // ═══════════ SETTINGS PERSISTENCE ═══════════
+  _sanitize(s) { try { return decodeURIComponent(escape(s)); } catch(e) { return s; } }
+
+  // ============================================================
 
   _loadSetting(key, fallback) {
     try {
       const s = localStorage.getItem('ha-tools-settings');
       if (s) { const p = JSON.parse(s); if (p['trace-viewer.' + key] !== undefined) return p['trace-viewer.' + key]; }
-      const v = localStorage.getItem('ha-trace-viewer-' + key);
+      const v = localStorage.getItem('ha-tools-trace-viewer-' + key);
       if (v !== null) return JSON.parse(v);
     } catch {}
     return fallback;
@@ -114,11 +621,11 @@ class HATraceViewer extends HTMLElement {
     this._saveSetting('traceFilterResult', this.traceFilterResult);
   }
 
-  // ═══════════ TRACE PERSISTENCE ═══════════
+  // ============================================================
 
   _loadStoredTraces() {
     try {
-      const d = localStorage.getItem('ha-trace-viewer-stored');
+      const d = localStorage.getItem('ha-tools-trace-viewer-stored');
       if (d) {
         const parsed = JSON.parse(d);
         const map = {};
@@ -138,7 +645,7 @@ class HATraceViewer extends HTMLElement {
         return tb.localeCompare(ta);
       });
       const trimmed = arr.slice(0, 2000);
-      localStorage.setItem('ha-trace-viewer-stored', JSON.stringify(trimmed));
+      localStorage.setItem('ha-tools-trace-viewer-stored', JSON.stringify(trimmed));
     } catch (e) {
       console.warn('[Trace Viewer] Could not save traces:', e);
     }
@@ -146,7 +653,7 @@ class HATraceViewer extends HTMLElement {
 
   _loadStoredDetails() {
     try {
-      const d = localStorage.getItem('ha-trace-viewer-details');
+      const d = localStorage.getItem('ha-tools-trace-viewer-details');
       return d ? JSON.parse(d) : {};
     } catch {}
     return {};
@@ -159,7 +666,7 @@ class HATraceViewer extends HTMLElement {
         const sorted = keys.sort();
         sorted.slice(0, keys.length - 200).forEach(k => delete this._storedDetails[k]);
       }
-      localStorage.setItem('ha-trace-viewer-details', JSON.stringify(this._storedDetails));
+      localStorage.setItem('ha-tools-trace-viewer-details', JSON.stringify(this._storedDetails));
     } catch (e) {
       console.warn('[Trace Viewer] Could not save details:', e);
     }
@@ -179,7 +686,7 @@ class HATraceViewer extends HTMLElement {
     return Object.keys(this._storedTraces).length;
   }
 
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ TRANSLATIONS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ============================================================
 
   static get _translations() {
     return {
@@ -215,38 +722,40 @@ class HATraceViewer extends HTMLElement {
         entityChanged: 'changed to', triggeredByAction: 'triggered by action',
         copyJson: 'Copy', copied: 'Copied!',
         selectMode: 'Select', cancel: 'Cancel',
+        previousPage: 'Previous page', nextPage: 'Next page',
       },
-      pl: {
-        traceViewer: 'PrzeglÄ…darka ĹšladĂłw', automations: 'Automatyzacje', allTraces: 'Wszystkie',
-        traces: 'Ĺšlady', traceDetail: 'SzczegĂłĹ‚y', timeline: 'OĹ› Czasowa', json: 'JSON',
-        changes: 'Zmiany', config: 'Konfiguracja', related: 'PowiÄ…zane', flowGraph: 'Graf',
-        search: 'Wyszukaj automatyzacje...', searchTraces: 'Wyszukaj Ĺ›lady...',
-        noTraces: 'Nie znaleziono Ĺ›ladĂłw', noAutomations: 'Nie znaleziono automatyzacji',
-        clickAutomationToView: 'Wybierz automatyzacjÄ™', clickTraceToView: 'Wybierz Ĺ›lad',
+            pl: {
+        traceViewer: 'Przegl\u0105darka \u015alad\u00f3w', automations: 'Automatyzacje', allTraces: 'Wszystkie',
+        traces: '\u015alady', traceDetail: 'Szczeg\u00f3\u0142y', timeline: 'O\u015b Czasowa', json: 'JSON',
+        changes: 'Zmiany', config: 'Konfiguracja', related: 'Powi\u0105zane', flowGraph: 'Graf',
+        search: 'Wyszukaj automatyzacje...', searchTraces: 'Wyszukaj \u015blady...',
+        noTraces: 'Nie znaleziono \u015blad\u00f3w', noAutomations: 'Nie znaleziono automatyzacji',
+        clickAutomationToView: 'Wybierz automatyzacj\u0119', clickTraceToView: 'Wybierz \u015blad',
         trigger: 'Wyzwalacz', conditions: 'Warunki', actions: 'Akcje',
         status: 'Status', duration: 'Czas', ms: 'ms',
-        loading: 'Ĺadowanie...', error: 'BĹ‚Ä…d', success: 'Sukces',
+        loading: '\u0141adowanie...', error: 'B\u0142\u0105d', success: 'Sukces',
         running: 'Uruchomione', aborted: 'Przerwane', stopped: 'Zatrzymane',
         sortBy: 'Sortuj:', sortName: 'Nazwa (A-Z)', sortLastTriggered: 'Ostatnie',
-        sortTriggerCount: 'Liczba ĹšladĂłw',
-        filterByStatus: 'Status:', allStatuses: 'Wszystkie', statusRunning: 'WĹ‚.',
-        statusStopped: 'WyĹ‚.', statusError: 'BĹ‚Ä…d',
+        sortTriggerCount: 'Liczba \u015alad\u00f3w',
+        filterByStatus: 'Status:', allStatuses: 'Wszystkie', statusRunning: 'W\u0142.',
+        statusStopped: 'Wy\u0142.', statusError: 'B\u0142\u0105d',
         justNow: 'Teraz', minutesAgo: 'm temu', hoursAgo: 'h temu', daysAgo: 'd temu',
         groupBy: 'Grupuj:', groupAutomation: 'Automatyzacja', groupResult: 'Rezultat', groupTrigger: 'Wyzwalacz',
-        timeRange: 'Czas:', timeAll: 'CaĹ‚y', time1h: '1h', time6h: '6h',
-        time24h: '24h', time7d: '7d', time30d: '30d', timeCustom: 'WĹ‚asny...',
+        timeRange: 'Czas:', timeAll: 'Ca\u0142y', time1h: '1h', time6h: '6h',
+        time24h: '24h', time7d: '7d', time30d: '30d', timeCustom: 'W\u0142asny...',
         export: 'Eksport', exportJson: 'JSON', exportCsv: 'CSV',
-        selectAll: 'Wszystkie', selected: 'wybranych', refresh: 'OdĹ›wieĹĽ',
-        totalTraces: 'Ĺ‚Ä…cznie', successRate: 'sukces', avgDuration: 'Ĺ›rednio',
+        selectAll: 'Wszystkie', selected: 'wybranych', refresh: 'Od\u015bwie\u017c',
+        totalTraces: '\u0142\u0105cznie', successRate: 'sukces', avgDuration: '\u015brednio',
         changedVariables: 'Zmienione Zmienne', noChanges: 'Brak zmian zmiennych',
         viewMode: 'Widok:', byAutomation: 'Wg Automatyzacji', flatList: 'Wszystkie',
-        executedAt: 'Wykonano:', finishedAt: 'ZakoĹ„czono o', runtime: 'czas wykonania',
+        executedAt: 'Wykonano:', finishedAt: 'Zako\u0144czono o', runtime: 'czas wykonania',
         triggeredBy: 'Wyzwolone przez', testCondition: 'Warunek',
-        performAction: 'Wykonaj akcjÄ™', automationConfig: 'Konfiguracja Automatyzacji',
-        relatedActivity: 'PowiÄ…zana AktywnoĹ›Ä‡', noRelatedActivity: 'Brak powiÄ…zanej aktywnoĹ›ci',
-        entityChanged: 'zmieniono na', triggeredByAction: 'wyzwolone przez akcjÄ™',
+        performAction: 'Wykonaj akcj\u0119', automationConfig: 'Konfiguracja Automatyzacji',
+        relatedActivity: 'Powi\u0105zana Aktywno\u015b\u0107', noRelatedActivity: 'Brak powi\u0105zanej aktywno\u015bci',
+        entityChanged: 'zmieniono na', triggeredByAction: 'wyzwolone przez akcj\u0119',
         copyJson: 'Kopiuj', copied: 'Skopiowano!',
         selectMode: 'Zaznacz', cancel: 'Anuluj',
+        previousPage: 'Poprzednia strona', nextPage: 'Nast\u0119pna strona',
       },
     };
   }
@@ -260,7 +769,8 @@ class HATraceViewer extends HTMLElement {
   setConfig(config) { this.config = { title: 'Trace Viewer', ...config }; }
 
   set hass(hass) {
-    const firstLoad = !this._hass;
+
+    if (hass?.language) this._lang = hass.language.startsWith('pl') ? 'pl' : 'en';    const firstLoad = !this._hass;
     this._hass = hass;
     if (firstLoad) {
       this._allTraces = [];
@@ -269,7 +779,7 @@ class HATraceViewer extends HTMLElement {
     }
   }
 
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ DATA â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ============================================================
 
   async updateAutomationData() {
     if (!this._hass) return;
@@ -340,7 +850,7 @@ class HATraceViewer extends HTMLElement {
     return 'success';
   }
 
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ FILTERS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ============================================================
 
   _timeCutoff() {
     if (this.timeRange === 'all') return null;
@@ -403,7 +913,7 @@ class HATraceViewer extends HTMLElement {
     return { n, ok, err, avg, rate: n ? Math.round((ok / n) * 100) : 0 };
   }
 
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ TIME HELPERS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ============================================================
 
   _startTimer() {
     if (this.relativeTimeUpdater) clearInterval(this.relativeTimeUpdater);
@@ -437,7 +947,7 @@ class HATraceViewer extends HTMLElement {
     return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   }
 
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ ACTIONS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ============================================================
 
   onAutoClick(entity) {
     this.selectedAutomation = entity;
@@ -511,7 +1021,7 @@ class HATraceViewer extends HTMLElement {
     this.render();
   }
 
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ TRACE DETAIL BUILDER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ============================================================
 
   _buildDetail(trace, detail) {
     const steps = [];
@@ -691,7 +1201,7 @@ class HATraceViewer extends HTMLElement {
     return String(obj);
   }
 
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ FLOW GRAPH (SVG) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ============================================================
 
   _renderFlowGraph(steps) {
     if (!steps || steps.length < 2) return '';
@@ -712,16 +1222,16 @@ class HATraceViewer extends HTMLElement {
         svg += `<line x1="${cx}" y1="${y + nodeH}" x2="${cx}" y2="${nextY}" stroke="var(--divider-color)" stroke-width="2" stroke-dasharray="${step.status === 'skipped' ? '4,4' : 'none'}"/>`;
       }
 
-      // Node colors
+      // Node colors (Bento tokens with hex fallbacks)
       let fill, stroke, textFill;
-      if (step.category === 'trigger') { fill = 'rgba(59,130,246,0.12)'; stroke = '#3B82F6'; textFill = '#3B82F6'; }
+      if (step.category === 'trigger') { fill = 'rgba(59,130,246,0.12)'; stroke = 'var(--bento-primary, #3B82F6)'; textFill = 'var(--bento-primary, #3B82F6)'; }
       else if (step.category === 'condition') {
-        if (step.status === 'skipped') { fill = 'rgba(100,116,139,0.08)'; stroke = '#94A3B8'; textFill = '#94A3B8'; }
-        else { fill = 'rgba(245,158,11,0.12)'; stroke = '#F59E0B'; textFill = '#B45309'; }
+        if (step.status === 'skipped') { fill = 'rgba(100,116,139,0.08)'; stroke = 'var(--bento-text-secondary, #94A3B8)'; textFill = 'var(--bento-text-secondary, #94A3B8)'; }
+        else { fill = 'rgba(245,158,11,0.12)'; stroke = 'var(--bento-warning, #F59E0B)'; textFill = 'var(--tc, #B45309)'; }
       }
-      else if (step.category === 'result') { fill = step.status === 'success' ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)'; stroke = step.status === 'success' ? '#10B981' : '#EF4444'; textFill = stroke; }
-      else if (step.status === 'error') { fill = 'rgba(239,68,68,0.12)'; stroke = '#EF4444'; textFill = '#EF4444'; }
-      else { fill = 'rgba(16,185,129,0.1)'; stroke = '#10B981'; textFill = '#1E293B'; }
+      else if (step.category === 'result') { fill = step.status === 'success' ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)'; stroke = step.status === 'success' ? 'var(--bento-success, #10B981)' : 'var(--bento-error, #EF4444)'; textFill = stroke; }
+      else if (step.status === 'error') { fill = 'rgba(239,68,68,0.12)'; stroke = 'var(--bento-error, #EF4444)'; textFill = 'var(--bento-error, #EF4444)'; }
+      else { fill = 'rgba(16,185,129,0.1)'; stroke = 'var(--bento-success, #10B981)'; textFill = 'var(--tc, #1E293B)'; }
 
       // Rounded rect node
       svg += `<rect x="${cx - nodeW / 2}" y="${y}" width="${nodeW}" height="${nodeH}" rx="18" fill="${fill}" stroke="${stroke}" stroke-width="1.5"/>`;
@@ -748,7 +1258,7 @@ class HATraceViewer extends HTMLElement {
 
   _escHtml(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ EXPORT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ============================================================
 
   async _export(fmt, onlySelected) {
     let list = onlySelected && this.selectedTraceIds.size > 0
@@ -848,7 +1358,7 @@ class HATraceViewer extends HTMLElement {
     a.download = filename; a.click();
   }
 
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ SAFE JSON â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ============================================================
 
   _safeJson(obj) {
     try {
@@ -860,12 +1370,12 @@ class HATraceViewer extends HTMLElement {
     } catch (e) { return 'Error: ' + e.message; }
   }
 
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ STATUS HELPERS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ============================================================
 
   _ico(s) { return s === 'success' ? '\u2714' : s === 'running' ? '\u21BB' : s === 'error' ? '\u274C' : s === 'aborted' ? '\u23F9' : '\u2753'; }
   _sLabel(s) { return this._t(s) || s; }
 
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ RENDER: AUTOMATIONS LIST â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ============================================================
 
   _renderAutoList() {
     if (!this.automations.length) return `<div class="empty"><div class="empty-ico">\u26A0</div><div>${this._t('noAutomations')}</div></div>`;
@@ -876,9 +1386,9 @@ class HATraceViewer extends HTMLElement {
     const pageList = this.automations.slice(this.autoPage * ps, (this.autoPage + 1) * ps);
 
     const pag = totalPages > 1 ? `<div class="pag">
-      <button class="pag-btn" data-apdir="-1" ${this.autoPage === 0 ? 'disabled' : ''}>\u2039</button>
+      <button class="pag-btn" data-apdir="-1" ${this.autoPage === 0 ? 'disabled' : ''} aria-label="${this._t('previousPage')}">\u2039</button>
       <span class="pag-info">${this.autoPage + 1}/${totalPages} (${this.automations.length})</span>
-      <button class="pag-btn" data-apdir="1" ${this.autoPage >= totalPages - 1 ? 'disabled' : ''}>\u203A</button>
+      <button class="pag-btn" data-apdir="1" ${this.autoPage >= totalPages - 1 ? 'disabled' : ''} aria-label="${this._t('nextPage')}">\u203A</button>
       <select class="pag-size" id="autoPagSize">
         <option value="15" ${ps === 15 ? 'selected' : ''}>15</option>
         <option value="30" ${ps === 30 ? 'selected' : ''}>30</option>
@@ -894,9 +1404,9 @@ class HATraceViewer extends HTMLElement {
       <div class="auto-item ${isSel ? 'sel' : ''} ${isChk ? 'chk' : ''} s-${a.status}" data-auto="${a.entity}">
         ${this.selectMode ? `<span class="tr-cb" data-autocheck="${a.entity}">${isChk ? '\u2611' : '\u2610'}</span>` : ''}
         <div style="flex:1;min-width:0">
-          <div class="auto-name">${a.name}</div>
+          <div class="auto-name">${this._sanitize(a.name)}</div>
           <div class="auto-meta">
-            <span class="auto-dot s-${a.status}">\u25CF</span>
+            <span class="auto-dot s-${a.status}"></span>
             <span data-ts="${a.lastTriggered?.toISOString() || ''}">${a.lastTriggered ? this._relTime(a.lastTriggered) : 'Never'}</span>
             <span class="auto-count">${a.triggerCount}</span>
           </div>
@@ -905,7 +1415,7 @@ class HATraceViewer extends HTMLElement {
     }).join('')}</div>` + pag;
   }
 
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ RENDER: TRACES LIST â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ============================================================
 
   _renderTracesList() {
     if (this.viewMode === 'automations' && !this.selectedAutomation)
@@ -927,7 +1437,7 @@ class HATraceViewer extends HTMLElement {
       return statsHtml + `<div class="list">${groups.map(g => `
         <div class="tgroup">
           <div class="tgroup-h" data-group="${g.name}">
-            <span class="tg-tog">\u25BC</span><span class="tg-name">${g.name}</span>
+            <span class="tg-tog">\u25BC</span><span class="tg-name">${this._sanitize(g.name)}</span>
             <span class="tg-cnt">${g.count}</span>
           </div>
           <div class="tgroup-items">${g.traces.map(t => this._renderTraceItem(t)).join('')}</div>
@@ -959,7 +1469,7 @@ class HATraceViewer extends HTMLElement {
       </div>`;
   }
 
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ RENDER: DETAIL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ============================================================
 
   _renderDetail() {
     if (!this.traceDetail) {
@@ -971,6 +1481,57 @@ class HATraceViewer extends HTMLElement {
     const tabs = ['timeline', 'related', 'changes', 'config', 'json'];
     const tabLabels = { timeline: this._t('timeline'), related: `${this._t('related')} (${relatedEntities.length})`,
       changes: `${this._t('changes')} (${changedVars.length})`, config: this._t('config'), json: this._t('json') };
+
+    // Build only the active tab pane
+    let activePane = '';
+    switch (this.detailTab) {
+      case 'timeline':
+        activePane = steps.map((s, i) => `
+          <div class="tl-step s-${s.status}">
+            <div class="tl-head">
+              <div class="tl-num" style="background:${s.category === 'trigger' ? 'var(--bento-primary, #3B82F6)' : s.category === 'condition' ? 'var(--bento-warning, #F59E0B)' : s.category === 'result' ? (s.status === 'success' ? 'var(--bento-success, #10B981)' : 'var(--bento-error, #EF4444)') : s.status === 'error' ? 'var(--bento-error, #EF4444)' : 'var(--bento-success, #10B981)'}">${s.icon}</div>
+              <div class="tl-title">
+                <span class="tl-cat">${s.category.toUpperCase()}</span>
+                <span class="tl-desc">${s.description}</span>
+              </div>
+              <span class="tl-dur">${s.duration > 0 ? this._fmtDur(s.duration) : ''}</span>
+            </div>
+            ${s.error ? `<div class="tl-err">\u26A0 ${typeof s.error === 'string' ? s.error : JSON.stringify(s.error)}</div>` : ''}
+            ${Object.keys(s.details).length > 0 ? `<div class="tl-dets">${Object.entries(s.details).filter(([,v]) => v !== undefined && v !== null).map(([k, v]) =>
+              `<span class="tl-det"><b>${k}:</b> ${typeof v === 'object' ? JSON.stringify(v) : v}</span>`
+            ).join('')}</div>` : ''}
+            ${s.timestamp ? `<div class="tl-ts">${this._fmtTimeShort(s.timestamp)}</div>` : ''}
+          </div>
+        `).join('');
+        break;
+      case 'related':
+        activePane = relatedEntities.length === 0 ? `<div class="empty" style="height:auto;padding:24px">${this._t('noRelatedActivity')}</div>` :
+          `<div class="rel-list">${relatedEntities.map(r => `
+            <div class="rel-item">
+              <div class="rel-entity">${r.friendlyName || r.entity}</div>
+              <div class="rel-action">${r.action}</div>
+              ${r.time ? `<div class="rel-time">${this._fmtTimeShort(r.time)}</div>` : ''}
+            </div>
+          `).join('')}</div>`;
+        break;
+      case 'changes':
+        activePane = changedVars.length === 0 ? `<div class="empty" style="height:auto;padding:24px">${this._t('noChanges')}</div>` :
+          changedVars.map(cv => `
+            <div class="cv-item">
+              <div class="cv-head"><span class="cv-step">${cv.step}</span><span class="cv-name">${cv.variable}</span></div>
+              <pre class="cv-val">${this._safeJson(cv.value)}</pre>
+            </div>
+          `).join('');
+        break;
+      case 'config':
+        activePane = `<div class="config-header">${this._t('automationConfig')}</div>
+          <pre class="yaml-content">${this._escHtml(configYaml)}</pre>`;
+        break;
+      case 'json':
+        activePane = `<div class="json-bar"><button class="btn-s" id="cpJson">\u{1F4CB} ${this._t('copyJson')}</button></div>
+          <pre class="json-content">${this._safeJson(rawData)}</pre>`;
+        break;
+    }
 
     return `
       <!-- Header with status -->
@@ -992,73 +1553,22 @@ class HATraceViewer extends HTMLElement {
 
       <!-- Tabs -->
       <div class="det-tabs">
-        ${tabs.map(t => `<button class="dtab ${this.detailTab === t ? 'act' : ''}" data-dtab="${t}">${tabLabels[t]}</button>`).join('')}
+        ${tabs.map(t => `<button class="dtab ${this.detailTab === t ? 'act' : ''}" data-dtab="${t}" role="tab" aria-selected="${!!(this.detailTab === t )}">${tabLabels[t]}</button>`).join('')}
       </div>
 
       <!-- Tab content -->
       <div class="det-body">
-        <!-- TIMELINE -->
-        <div class="tab-pane ${this.detailTab === 'timeline' ? 'act' : ''}" id="tp-timeline">
-          ${steps.map((s, i) => `
-            <div class="tl-step s-${s.status}">
-              <div class="tl-head">
-                <div class="tl-num" style="background:${s.category === 'trigger' ? '#3B82F6' : s.category === 'condition' ? '#F59E0B' : s.category === 'result' ? (s.status === 'success' ? '#10B981' : '#EF4444') : s.status === 'error' ? '#EF4444' : '#10B981'}">${s.icon}</div>
-                <div class="tl-title">
-                  <span class="tl-cat">${s.category.toUpperCase()}</span>
-                  <span class="tl-desc">${s.description}</span>
-                </div>
-                <span class="tl-dur">${s.duration > 0 ? this._fmtDur(s.duration) : ''}</span>
-              </div>
-              ${s.error ? `<div class="tl-err">\u26A0 ${typeof s.error === 'string' ? s.error : JSON.stringify(s.error)}</div>` : ''}
-              ${Object.keys(s.details).length > 0 ? `<div class="tl-dets">${Object.entries(s.details).filter(([,v]) => v !== undefined && v !== null).map(([k, v]) =>
-                `<span class="tl-det"><b>${k}:</b> ${typeof v === 'object' ? JSON.stringify(v) : v}</span>`
-              ).join('')}</div>` : ''}
-              ${s.timestamp ? `<div class="tl-ts">${this._fmtTimeShort(s.timestamp)}</div>` : ''}
-            </div>
-          `).join('')}
-        </div>
-
-        <!-- RELATED ACTIVITY -->
-        <div class="tab-pane ${this.detailTab === 'related' ? 'act' : ''}" id="tp-related">
-          ${relatedEntities.length === 0 ? `<div class="empty" style="height:auto;padding:24px">${this._t('noRelatedActivity')}</div>` :
-          `<div class="rel-list">${relatedEntities.map(r => `
-            <div class="rel-item">
-              <div class="rel-entity">${r.friendlyName || r.entity}</div>
-              <div class="rel-action">${r.action}</div>
-              ${r.time ? `<div class="rel-time">${this._fmtTimeShort(r.time)}</div>` : ''}
-            </div>
-          `).join('')}</div>`}
-        </div>
-
-        <!-- CHANGES -->
-        <div class="tab-pane ${this.detailTab === 'changes' ? 'act' : ''}" id="tp-changes">
-          ${changedVars.length === 0 ? `<div class="empty" style="height:auto;padding:24px">${this._t('noChanges')}</div>` :
-          changedVars.map(cv => `
-            <div class="cv-item">
-              <div class="cv-head"><span class="cv-step">${cv.step}</span><span class="cv-name">${cv.variable}</span></div>
-              <pre class="cv-val">${this._safeJson(cv.value)}</pre>
-            </div>
-          `).join('')}
-        </div>
-
-        <!-- CONFIG -->
-        <div class="tab-pane ${this.detailTab === 'config' ? 'act' : ''}" id="tp-config">
-          <div class="config-header">${this._t('automationConfig')}</div>
-          <pre class="yaml-content">${this._escHtml(configYaml)}</pre>
-        </div>
-
-        <!-- JSON -->
-        <div class="tab-pane ${this.detailTab === 'json' ? 'act' : ''}" id="tp-json">
-          <div class="json-bar"><button class="btn-s" id="cpJson">\u{1F4CB} ${this._t('copyJson')}</button></div>
-          <pre class="json-content">${this._safeJson(rawData)}</pre>
+        <div class="tab-pane act" id="tp-${this.detailTab}">
+          ${activePane}
         </div>
       </div>
     `;
   }
 
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ MAIN RENDER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ============================================================
 
   render() {
+    if (!this._hass) return;
     const selN = this.selectedTraceIds.size;
     this.shadowRoot.innerHTML = `${this._css()}
     <div class="card">
@@ -1067,15 +1577,13 @@ class HATraceViewer extends HTMLElement {
         <div class="topbar">
           <span class="title">${this.config.title || this._t('traceViewer')}</span>
           <div class="topbar-r">
-            <span style="font-size:11px;color:var(--ts);padding:4px 8px;background:var(--bg);border-radius:var(--radius-xs);border:1px solid var(--dc)">\u{1F4BE} ${this._getStoredTraceCount()} saved</span>
-            <button class="btn-s" id="refreshBtn">\u21BB</button>
+            <span class="trace-saved-badge" id="traceStorageInfo" title="${this._lang === 'pl' ? 'Zapisane trace\u2019y' : 'Saved traces'}" style="font-size:11px;color:var(--bento-text-secondary);padding:4px 8px;background:var(--bento-bg);border-radius:var(--radius-xs);border:1px solid var(--bento-border);display:inline-flex;align-items:center;gap:4px">\u{1F4BE} ${this._getStoredTraceCount()} saved</span><span class="trace-settings-btn" id="goToSettingsBtn" title="${this._lang === 'pl' ? 'Ustawienia Trace Viewer' : 'Trace Viewer Settings'}" style="font-size:11px;color:var(--bento-text-secondary);padding:4px 8px;background:var(--bento-bg);border-radius:var(--radius-xs);border:1px solid var(--bento-border);cursor:pointer;display:inline-flex;align-items:center;gap:4px;margin-left:6px">\u2699\uFE0F ${this._lang === 'pl' ? 'Ustawienia' : 'Settings'}</span>
             <div class="dd" id="expDD">
-              <button class="btn-s" id="expBtn">${this._t('export')} \u25BE</button>
+              <button class="btn-s" id="expBtn" ${selN === 0 && this.selectedAutoIds.size === 0 ? 'disabled style="opacity:0.4;pointer-events:none;cursor:default"' : ''}>${this._t('export')} \u25BE</button>
               <div class="dd-menu">
                 ${selN > 0 ? `<div class="dd-i" data-exp="sel-json">JSON (${selN} traces ${this._t('selected')})</div><div class="dd-i" data-exp="sel-csv">CSV (${selN} traces ${this._t('selected')})</div><div class="dd-div"></div>` : ''}
                 ${this.selectedAutoIds.size > 0 ? `<div class="dd-i" data-exp="auto-json">JSON (${this.selectedAutoIds.size} ${this._t('automations')})</div><div class="dd-i" data-exp="auto-csv">CSV (${this.selectedAutoIds.size} ${this._t('automations')})</div><div class="dd-div"></div>` : ''}
-                <div class="dd-i" data-exp="all-json">${this._t('exportJson')}</div>
-                <div class="dd-i" data-exp="all-csv">${this._t('exportCsv')}</div>
+                
               </div>
             </div>
           </div>
@@ -1106,7 +1614,7 @@ class HATraceViewer extends HTMLElement {
           <div class="cg cg-r">
             <button class="btn-s ${this.selectMode ? 'btn-act' : ''}" id="selBtn">\u2611 ${this.selectMode ? this._t('cancel') : this._t('selectMode')}</button>
             ${this.selectMode ? `
-              <span style="font-size:12px;color:var(--ts);font-weight:500">${this.selectedAutoIds.size}A + ${this.selectedTraceIds.size}T</span>
+              <span style="font-size:12px;color:var(--bento-text-secondary);font-weight:500">${this.selectedAutoIds.size}A + ${this.selectedTraceIds.size}T</span>
             ` : ''}
           </div>
         </div>
@@ -1147,21 +1655,66 @@ class HATraceViewer extends HTMLElement {
       </div>
     </div>`;
     this._bindEvents();
+    // Apply compact classes immediately after render based on current width
+    this._applyCompactClasses();
   }
 
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ EVENTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  _applyCompactClasses() {
+    const w = this.offsetWidth || this.clientWidth || 0;
+    const card = this.shadowRoot?.querySelector('.card');
+    if (!card || !w) return;
+    card.classList.toggle('compact-mobile', w < 768);
+    card.classList.toggle('compact-xs', w < 480);
+    card.classList.toggle('compact-hide-right', w < 1200);
+    card.classList.toggle('compact-hide-left', w < 900);
+  }
+
+  // ============================================================
 
   _bindEvents() {
     const $ = s => this.shadowRoot.querySelector(s);
     const $$ = s => this.shadowRoot.querySelectorAll(s);
 
-    $('#refreshBtn')?.addEventListener('click', () => this.updateAutomationData());
+    // Trace storage info badge -- navigate to panel Settings >
+    $('#traceStorageInfo')?.addEventListener('click', () => {
+      // Shadow DOM: this element lives inside ha-tools-panel's shadowRoot
+      // closest() can't cross shadow boundaries, use getRootNode().host instead
+      let panel = null;
+      try {
+        const root = this.getRootNode();
+        if (root && root.host && root.host.tagName === 'HA-TOOLS-PANEL') {
+          panel = root.host;
+        }
+      } catch (e) { console.debug('[ha-trace-viewer] caught:', e); }
+      if (!panel) panel = document.querySelector('ha-tools-panel');
+      if (panel && panel._navigateToSettings) {
+        panel._navigateToSettings('trace-backend');
+      } else {
+        this.dispatchEvent(new CustomEvent('navigate-settings', { bubbles: true, composed: true, detail: { section: 'trace-backend' } }));
+      }
+    });
+
+    // Settings info bar button
+    $('#goToSettingsBtn')?.addEventListener('click', () => {
+      let panel = null;
+      try {
+        const root = this.getRootNode();
+        if (root && root.host && root.host.tagName === 'HA-TOOLS-PANEL') panel = root.host;
+      } catch (e) { console.debug('[ha-trace-viewer] caught:', e); }
+      if (!panel) panel = document.querySelector('ha-tools-panel');
+      if (panel && panel._navigateToSettings) {
+        panel._navigateToSettings('trace-backend');
+      } else {
+        this.dispatchEvent(new CustomEvent('navigate-settings', { bubbles: true, composed: true, detail: { section: 'trace-backend' } }));
+      }
+    });
 
     // Export dropdown
     $('#expBtn')?.addEventListener('click', e => {
       e.stopPropagation();
       const dd = $('#expDD'); dd.classList.toggle('open');
       const close = () => { dd.classList.remove('open'); document.removeEventListener('click', close); };
+      this._expDDClose = close;
       setTimeout(() => document.addEventListener('click', close), 0);
     });
     $$('.dd-i[data-exp]').forEach(el => el.addEventListener('click', () => {
@@ -1255,58 +1808,98 @@ class HATraceViewer extends HTMLElement {
     });
   }
 
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ STYLES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ============================================================
 
   _css() {
-    return `<style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    return `<style>${window.HAToolsBentoCSS || ""}
+/* === Support / Donation Section (HA Tools split) === */
+.donate-section { margin: 20px 0 4px; padding: 18px 20px;  background: var(--donate-bg, linear-gradient(135deg, #fff5f5 0%, #fff0f6 50%, #f8f0ff 100%));  border: 1px solid var(--donate-border, #f3d3e0); border-radius: var(--bento-radius-md, 16px);  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; }
+.donate-section h3 { margin: 0 0 6px; font-size: 15px; color: var(--donate-heading, #be185d); }
+.donate-section p  { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--donate-text, #6b21a8); }
+.donate-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+.donate-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 10px;  font-weight: 600; font-size: 12.5px; text-decoration: none; transition: transform .15s ease, box-shadow .15s ease; }
+.donate-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 10px rgba(0,0,0,0.08); }
+.donate-btn.coffee { background: #FFDD00; color: #000; border: 1px solid #e6c700; }
+.donate-btn.paypal { background: #0070ba; color: #fff; border: 1px solid #005ea6; }
+@media (prefers-color-scheme: dark) {  .donate-section { background: linear-gradient(135deg, #2a1525 0%, #1e1530 50%, #251530 100%); border-color: #4a3555; }  .donate-section h3 { color: #f0c0d8; }  .donate-section p  { color: #d4a0b8; }  .donate-btn.coffee { background: #b8a100; color: #fff; border-color: #8a7a00; }  .donate-btn.paypal { background: #005a96; color: #e0f0ff; border-color: #004a7a; } }
+@media (max-width: 600px) {  .donate-section { flex-direction: column; text-align: center; padding: 16px; }  .donate-buttons { justify-content: center; } }
+
+
+
+/* ===== BENTO DESIGN SYSTEM (local fallback) ===== */
 
 :host {
-  --pc: #3B82F6;
-  --ec: #EF4444;
-  --wc: #F59E0B;
-  --sc: #10B981;
-  --bg: #F8FAFC;
-  --cbg: #FFFFFF;
-  --tc: #1E293B;
-  --ts: #64748B;
-  --dc: #E2E8F0;
+  --bento-primary: #3B82F6;
+  --bento-primary-hover: #2563EB;
+  --bento-primary-light: rgba(59, 130, 246, 0.08);
+  --bento-success: #10B981;
+  --bento-success-light: rgba(16, 185, 129, 0.08);
+  --bento-error: #EF4444;
+  --bento-error-light: rgba(239, 68, 68, 0.08);
+  --bento-warning: #F59E0B;
+  --bento-warning-light: rgba(245, 158, 11, 0.08);
+  --bento-bg: var(--primary-background-color, #F8FAFC);
+  --bento-card: var(--card-background-color, #FFFFFF);
+  --bento-border: var(--divider-color, #E2E8F0);
+  --bento-text: var(--primary-text-color, #1E293B);
+  --bento-text-secondary: var(--secondary-text-color, #64748B);
+  --bento-text-muted: var(--disabled-text-color, #94A3B8);
+  --bento-radius-xs: 6px;
+  --bento-radius-sm: 10px;
+  --bento-radius-md: 16px;
+  --bento-shadow-sm: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.06);
+  --bento-shadow-md: 0 4px 12px rgba(0,0,0,0.05), 0 2px 4px rgba(0,0,0,0.04);
+  --bento-shadow-lg: 0 8px 25px rgba(0,0,0,0.06), 0 4px 10px rgba(0,0,0,0.04);
+  --bento-transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+:host {
+  --pc: var(--bento-primary);
+  --ec: var(--bento-error);
+  --wc: var(--bento-warning);
+  --sc: var(--bento-success);
+  --bg: var(--bento-bg);
+  --cbg: var(--bento-card);
+  --tc: var(--bento-text);
+  --ts: var(--bento-text-secondary);
+  --dc: var(--bento-border);
   --hov: rgba(59, 130, 246, 0.04);
   --sel: rgba(59, 130, 246, 0.08);
-  --radius: 16px;
-  --radius-sm: 10px;
-  --radius-xs: 6px;
-  --shadow: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.02);
-  --shadow-md: 0 4px 12px rgba(0,0,0,0.06);
-  --tr: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  --radius: var(--bento-radius-md);
+  --radius-sm: var(--bento-radius-sm);
+  --radius-xs: var(--bento-radius-xs);
+  --shadow: var(--bento-shadow-sm);
+  --shadow-md: var(--bento-shadow-md);
+  --tr: var(--bento-transition);
   display: block;
-  color-scheme: light !important;
+  color-scheme: light dark;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 .card {
-  display: flex; height: 100%; background: var(--cbg); color: var(--tc);
-  border-radius: var(--radius); overflow: hidden;
+  display: flex; height: 100%; background: var(--bento-card); color: var(--bento-text); container-type: inline-size;
+  border-radius: var(--radius); overflow: visible;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  border: 1px solid var(--dc); box-shadow: var(--shadow);
+  border: 1px solid var(--bento-border); box-shadow: var(--shadow);
 }
-.col-main { display: flex; flex-direction: column; flex: 1; overflow: hidden; color: var(--tc); font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+.col-main { display: flex; flex-direction: column; flex: 1; overflow: hidden; color: var(--bento-text); font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
 
 /* Top bar */
 .topbar {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 14px 20px; border-bottom: 1px solid var(--dc); background: var(--cbg);
+  padding: 14px 20px; border-bottom: 1px solid var(--bento-border); background: var(--bento-card);
+  border-radius: var(--radius) var(--radius) 0 0;
 }
-.title { font-size: 20px; font-weight: 700; color: var(--tc); letter-spacing: -0.01em; }
+.title { font-size: 20px; font-weight: 700; color: var(--bento-text); letter-spacing: -0.01em; }
 .topbar-r { display: flex; gap: 8px; align-items: center; }
 .btn-s {
-  padding: 9px 16px; border: 1.5px solid var(--dc); border-radius: var(--radius-sm);
-  background: var(--cbg); color: var(--tc); cursor: pointer; font-size: 13px;
+  padding: 9px 16px; border: 1.5px solid var(--bento-border); border-radius: var(--radius-sm);
+  background: var(--bento-card); color: var(--bento-text); cursor: pointer; font-size: 13px;
   font-weight: 500; font-family: 'Inter', sans-serif; transition: var(--tr); white-space: nowrap;
 }
-.btn-s:hover { background: var(--bg); border-color: var(--pc); color: var(--pc); }
+.btn-s:hover { background: var(--bento-bg); border-color: var(--bento-primary); color: var(--bento-primary); }
 .btn-act {
-  background: var(--pc) !important; color: white !important; border-color: var(--pc) !important;
+  background: var(--bento-primary) !important; color: white !important; border-color: var(--bento-primary) !important;
   box-shadow: 0 2px 8px rgba(59, 130, 246, 0.25) !important;
 }
 
@@ -1314,192 +1907,193 @@ class HATraceViewer extends HTMLElement {
 .dd { position: relative; display: inline-block; }
 .dd-menu {
   display: none; position: absolute; right: 0; top: 100%; margin-top: 4px;
-  background: var(--cbg); border: 1px solid var(--dc); border-radius: var(--radius-sm);
+  background: var(--bento-card); border: 1px solid var(--bento-border); border-radius: var(--radius-sm);
   min-width: 180px; z-index: 100; box-shadow: var(--shadow-md); overflow: hidden;
 }
 .dd.open .dd-menu { display: block; }
 .dd-i {
-  padding: 10px 16px; cursor: pointer; font-size: 13px; color: var(--tc);
+  padding: 10px 16px; cursor: pointer; font-size: 13px; color: var(--bento-text);
   transition: var(--tr); font-family: 'Inter', sans-serif;
 }
-.dd-i:hover { background: rgba(59, 130, 246, 0.06); color: var(--pc); }
-.dd-div { border-top: 1px solid var(--dc); margin: 4px 0; }
+.dd-i:hover { background: rgba(59, 130, 246, 0.06); color: var(--bento-primary); }
+.dd-div { border-top: 1px solid var(--bento-border); margin: 4px 0; }
 
 /* Controls bar */
 .cbar {
   display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 16px;
-  border-bottom: 1px solid var(--dc); background: var(--bg); align-items: center;
+  border-bottom: 1px solid var(--bento-border); background: var(--bento-bg); align-items: center;
 }
-.cg { display: flex; gap: 8px; align-items: center; font-size: 12px; }
+.cg { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; flex-shrink: 0; }
 .cg label {
-  display: block; font-size: 12px; font-weight: 600; color: var(--ts);
+  display: block; font-size: 12px; font-weight: 600; color: var(--bento-text-secondary);
   text-transform: uppercase; letter-spacing: 0.03em; white-space: nowrap;
 }
 .cg select, .cg input {
-  padding: 6px 10px; border: 1.5px solid var(--dc); border-radius: var(--radius-xs);
-  background: var(--cbg); color: var(--tc); font-size: 13px;
+  width: auto; padding: 6px 10px; border: 1.5px solid var(--bento-border); border-radius: var(--radius-xs);
+  background: var(--bento-card); color: var(--bento-text); font-size: 13px;
   font-family: 'Inter', sans-serif; transition: var(--tr); outline: none;
 }
-.cg select:focus, .cg input:focus { border-color: var(--pc); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
+.cg select:focus, .cg input:focus { border-color: var(--bento-primary); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
 .cg-r { margin-left: auto; }
 
 /* Stats */
 .stats {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
-  gap: 12px; padding: 12px 16px; background: var(--bg); border-bottom: 1px solid var(--dc);
+  gap: 12px; padding: 12px 16px; background: var(--bento-bg); border-bottom: 1px solid var(--bento-border);
 }
 .stat {
   display: flex; flex-direction: column; align-items: center; padding: 12px;
-  background: var(--cbg); border-radius: var(--radius-sm); border: 1px solid var(--dc);
+  background: var(--bento-card); border-radius: var(--radius-sm); border: 1px solid var(--bento-border);
   transition: var(--tr); text-align: center;
 }
-.stat:hover { border-color: var(--pc); box-shadow: var(--shadow-md); transform: translateY(-1px); }
-.sv { font-size: 24px; font-weight: 700; color: var(--pc); line-height: 1.2; }
-.sl { font-size: 12px; color: var(--ts); font-weight: 500; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.03em; }
-.stat.ok .sv { color: var(--sc); }
-.stat.err .sv { color: var(--ec); }
+.stat:hover { border-color: var(--bento-primary); box-shadow: var(--shadow-md); transform: translateY(-1px); }
+.sv { font-size: 24px; font-weight: 700; color: var(--bento-primary); line-height: 1.2; }
+.sl { font-size: 12px; color: var(--bento-text-secondary); font-weight: 500; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.03em; }
+.stat.ok .sv { color: var(--bento-success); }
+.stat.err .sv { color: var(--bento-error); }
 
 /* Panels */
 .panels { display: flex; flex: 1; overflow: hidden; }
 .pan-left {
   width: 280px; min-width: 240px; display: flex; flex-direction: column;
-  border-right: 1px solid var(--dc); background: var(--cbg);
+  border-right: 1px solid var(--bento-border); background: var(--bento-card);
 }
 .pan-center {
   flex: 1; min-width: 280px; display: flex; flex-direction: column;
-  border-right: 1px solid var(--dc); background: var(--cbg);
+  border-right: 1px solid var(--bento-border); background: var(--bento-card);
 }
 .pan-center.expanded { min-width: 360px; }
 .pan-right {
   flex: 1.4; min-width: 360px; display: flex; flex-direction: column;
-  background: var(--bg); overflow-y: auto;
+  background: var(--bento-bg); overflow-y: auto;
 }
 .pan-head {
-  padding: 12px 16px; border-bottom: 1px solid var(--dc); background: var(--bg);
+  padding: 12px 16px; border-bottom: 1px solid var(--bento-border); background: var(--bento-bg);
   display: flex; align-items: center; gap: 8px;
 }
 .pan-title {
-  font-size: 12px; font-weight: 600; color: var(--ts); text-transform: uppercase;
+  font-size: 12px; font-weight: 600; color: var(--bento-text-secondary); text-transform: uppercase;
   letter-spacing: 0.04em;
 }
 .sinput-sm {
-  flex: 1; max-width: 180px; padding: 6px 10px; border: 1.5px solid var(--dc);
-  border-radius: var(--radius-xs); background: var(--cbg); color: var(--tc);
+  flex: 1; max-width: 180px; padding: 6px 10px; border: 1.5px solid var(--bento-border);
+  border-radius: var(--radius-xs); background: var(--bento-card); color: var(--bento-text);
   font-size: 13px; font-family: 'Inter', sans-serif; transition: var(--tr); outline: none;
 }
-.sinput-sm:focus { border-color: var(--pc); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
+.sinput-sm:focus { border-color: var(--bento-primary); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
 
 /* Search & controls in left panel */
-.search-box { padding: 10px 12px; border-bottom: 1px solid var(--dc); }
+.search-box { padding: 10px 12px; border-bottom: 1px solid var(--bento-border); }
 .sinput {
-  width: 100%; padding: 9px 14px; border: 1.5px solid var(--dc); border-radius: var(--radius-sm);
-  background: var(--cbg); color: var(--tc); font-size: 13px;
+  width: 100%; padding: 9px 14px; border: 1.5px solid var(--bento-border); border-radius: var(--radius-sm);
+  background: var(--bento-card); color: var(--bento-text); font-size: 13px;
   font-family: 'Inter', sans-serif; transition: var(--tr); outline: none;
 }
-.sinput:focus { border-color: var(--pc); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
-.sinput::placeholder, .sinput-sm::placeholder { color: var(--ts); opacity: 0.7; }
-.ctrls { padding: 10px 12px; border-bottom: 1px solid var(--dc); display: flex; flex-direction: column; gap: 6px; }
+.sinput:focus { border-color: var(--bento-primary); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
+.sinput::placeholder, .sinput-sm::placeholder { color: var(--bento-text-secondary); opacity: 0.7; }
+.ctrls { padding: 10px 12px; border-bottom: 1px solid var(--bento-border); display: flex; flex-direction: column; gap: 6px; }
 .crow { display: flex; gap: 8px; align-items: center; font-size: 12px; }
-.clbl { font-weight: 600; min-width: 55px; color: var(--ts); font-size: 12px; text-transform: uppercase; letter-spacing: 0.03em; }
+.clbl { font-weight: 600; min-width: 55px; color: var(--bento-text-secondary); font-size: 12px; text-transform: uppercase; letter-spacing: 0.03em; }
 .csel {
-  flex: 1; padding: 6px 10px; border: 1.5px solid var(--dc); border-radius: var(--radius-xs);
-  background: var(--cbg); color: var(--tc); font-size: 13px;
+  flex: 1; padding: 6px 10px; border: 1.5px solid var(--bento-border); border-radius: var(--radius-xs);
+  background: var(--bento-card); color: var(--bento-text); font-size: 13px;
   font-family: 'Inter', sans-serif; transition: var(--tr); outline: none;
 }
-.csel:focus { border-color: var(--pc); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
+.csel:focus { border-color: var(--bento-primary); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
 
 /* List */
-.list { flex: 1; overflow-y: auto; overflow-x: hidden; border: 1px solid var(--dc); border-radius: var(--radius-sm); margin: 0; }
+.list { flex: 1; overflow-y: auto; overflow-x: hidden; border: 1px solid var(--bento-border); border-radius: var(--radius-sm); margin: 0; }
 .empty {
   display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
-  height: 100%; color: var(--ts); gap: 12px; font-size: 14px; padding: 48px 24px;
+  height: 100%; color: var(--bento-text-secondary); gap: 12px; font-size: 14px; padding: 48px 24px;
   font-family: 'Inter', sans-serif;
 }
 .empty-ico { font-size: 48px; opacity: 0.5; }
 .pag {
   display: flex; align-items: center; justify-content: center; gap: 8px;
-  padding: 12px 16px; font-size: 13px; color: var(--ts); border-bottom: 1px solid var(--dc);
+  padding: 12px 16px; font-size: 13px; color: var(--bento-text-secondary); border-bottom: 1px solid var(--bento-border);
 }
+@container (max-width: 600px) { .pag { display: none !important; } }
 .pag-btn {
-  padding: 8px 14px; border: 1.5px solid var(--dc); border-radius: var(--radius-xs);
-  background: var(--cbg); color: var(--tc); cursor: pointer; font-size: 13px;
+  padding: 8px 14px; border: 1.5px solid var(--bento-border); border-radius: var(--radius-xs);
+  background: var(--bento-card); color: var(--bento-text); cursor: pointer; font-size: 13px;
   font-weight: 500; font-family: 'Inter', sans-serif; transition: var(--tr);
 }
-.pag-btn:hover:not(:disabled) { background: var(--pc); color: white; border-color: var(--pc); }
+.pag-btn:hover:not(:disabled) { background: var(--bento-primary); color: white; border-color: var(--bento-primary); }
 .pag-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-.pag-info { font-size: 13px; color: var(--ts); font-weight: 500; padding: 0 8px; }
+.pag-info { font-size: 13px; color: var(--bento-text-secondary); font-weight: 500; padding: 0 8px; }
 .pag-size {
-  padding: 6px 10px; border: 1.5px solid var(--dc); border-radius: var(--radius-xs);
-  background: var(--cbg); color: var(--tc); font-size: 13px; cursor: pointer;
+  padding: 6px 10px; border: 1.5px solid var(--bento-border); border-radius: var(--radius-xs);
+  background: var(--bento-card); color: var(--bento-text); font-size: 13px; cursor: pointer;
   font-family: 'Inter', sans-serif;
 }
 
 /* Auto items */
 .auto-item {
-  padding: 12px 16px; border-bottom: 1px solid var(--dc); cursor: pointer;
+  padding: 12px 16px; border-bottom: 1px solid var(--bento-border); cursor: pointer;
   transition: var(--tr); display: flex; align-items: center; gap: 10px;
   font-family: 'Inter', sans-serif;
 }
 .auto-item:hover { background: rgba(59, 130, 246, 0.04); }
-.auto-item.sel { background: rgba(59, 130, 246, 0.08); border-left: 3px solid var(--pc); padding-left: 13px; }
+.auto-item.sel { background: rgba(59, 130, 246, 0.08); border-left: 3px solid var(--bento-primary); padding-left: 13px; }
 .auto-item.chk { background: rgba(59, 130, 246, 0.06); }
-.auto-name { font-weight: 500; font-size: 13px; color: var(--tc); margin-bottom: 2px; line-height: 1.4; }
-.auto-meta { display: flex; gap: 8px; font-size: 12px; color: var(--ts); align-items: center; }
-.auto-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ts); display: inline-block; }
-.auto-dot.s-running { background: var(--sc); color: var(--sc); }
-.auto-dot.s-stopped { background: var(--ts); color: var(--ts); }
-.auto-dot.s-error { background: var(--ec); color: var(--ec); }
+.auto-name { font-weight: 500; font-size: 13px; color: var(--bento-text); margin-bottom: 2px; line-height: 1.4; }
+.auto-meta { display: flex; gap: 8px; font-size: 12px; color: var(--bento-text-secondary); align-items: center; }
+.auto-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--bento-text-secondary); display: inline-block; }
+.auto-dot.s-running { background: var(--bento-success); color: var(--bento-success); }
+.auto-dot.s-stopped { background: var(--bento-text-secondary); color: var(--bento-text-secondary); }
+.auto-dot.s-error { background: var(--bento-error); color: var(--bento-error); }
 .auto-count {
-  background: var(--dc); padding: 2px 8px; border-radius: 10px; font-weight: 600;
-  font-size: 11px; color: var(--ts); margin-left: auto;
+  background: var(--bento-border); padding: 2px 8px; border-radius: 10px; font-weight: 600;
+  font-size: 11px; color: var(--bento-text-secondary); margin-left: auto;
 }
 
 /* Trace groups */
-.tgroup { border: 1px solid var(--dc); border-radius: var(--radius-xs); margin-bottom: 8px; overflow: hidden; }
+.tgroup { border: 1px solid var(--bento-border); border-radius: var(--radius-xs); margin-bottom: 8px; overflow: hidden; }
 .tgroup-h {
   display: flex; align-items: center; gap: 8px; padding: 10px 14px;
-  background: var(--bg); cursor: pointer; font-size: 13px; font-weight: 600;
-  user-select: none; transition: var(--tr); font-family: 'Inter', sans-serif; color: var(--tc);
+  background: var(--bento-bg); cursor: pointer; font-size: 13px; font-weight: 600;
+  user-select: none; transition: var(--tr); font-family: 'Inter', sans-serif; color: var(--bento-text);
 }
 .tgroup-h:hover { background: rgba(59, 130, 246, 0.06); }
-.tg-tog { font-size: 12px; transition: transform 0.2s; color: var(--ts); }
+.tg-tog { font-size: 12px; transition: transform 0.2s; color: var(--bento-text-secondary); }
 .tgroup.collapsed .tg-tog { transform: rotate(-90deg); }
 .tgroup.collapsed .tgroup-items { display: none; }
-.tg-name { flex: 1; font-weight: 600; font-size: 13px; color: var(--tc); }
+.tg-name { flex: 1; font-weight: 600; font-size: 13px; color: var(--bento-text); }
 .tg-cnt {
-  font-size: 11px; color: var(--ts); margin-left: auto; background: var(--dc);
+  font-size: 11px; color: var(--bento-text-secondary); margin-left: auto; background: var(--bento-border);
   padding: 2px 8px; border-radius: 10px;
 }
 
 /* Trace items */
 .tr-item {
-  padding: 10px 16px; border-bottom: 1px solid var(--dc); cursor: pointer;
+  padding: 10px 16px; border-bottom: 1px solid var(--bento-border); cursor: pointer;
   transition: var(--tr); display: flex; align-items: center; gap: 10px;
   font-family: 'Inter', sans-serif;
 }
 .tr-item:hover { background: rgba(59, 130, 246, 0.04); }
-.tr-item.sel { background: rgba(59, 130, 246, 0.08); border-left: 3px solid var(--pc); padding-left: 13px; }
+.tr-item.sel { background: rgba(59, 130, 246, 0.08); border-left: 3px solid var(--bento-primary); padding-left: 13px; }
 .tr-item.chk { background: rgba(59, 130, 246, 0.06); }
 .tr-cb { font-size: 16px; cursor: pointer; user-select: none; }
 .tr-ico { font-size: 14px; min-width: 18px; text-align: center; }
-.tr-ico.s-success { color: var(--sc); }
-.tr-ico.s-error { color: var(--ec); }
-.tr-ico.s-running { color: var(--pc); }
-.tr-ico.s-aborted { color: var(--wc); }
+.tr-ico.s-success { color: var(--bento-success); }
+.tr-ico.s-error { color: var(--bento-error); }
+.tr-ico.s-running { color: var(--bento-primary); }
+.tr-ico.s-aborted { color: var(--bento-warning); }
 .tr-info { flex: 1; min-width: 0; }
-.tr-auto { font-size: 12px; font-weight: 600; color: var(--pc); margin-bottom: 2px; }
-.tr-time { font-size: 12px; font-weight: 500; color: var(--tc); }
-.tr-trig { font-size: 11px; color: var(--ts); margin-top: 2px; }
-.tr-dur { font-size: 11px; color: var(--ts); white-space: nowrap; font-weight: 600; }
+.tr-auto { font-size: 12px; font-weight: 600; color: var(--bento-primary); margin-bottom: 2px; }
+.tr-time { font-size: 12px; font-weight: 500; color: var(--bento-text); }
+.tr-trig { font-size: 11px; color: var(--bento-text-secondary); margin-top: 2px; }
+.tr-dur { font-size: 11px; color: var(--bento-text-secondary); white-space: nowrap; font-weight: 600; }
 
 /* Detail panel */
 .det-head {
-  padding: 16px 20px; border-bottom: 1px solid var(--dc); display: flex;
-  justify-content: space-between; align-items: flex-start; gap: 12px; background: var(--cbg);
+  padding: 16px 20px; border-bottom: 1px solid var(--bento-border); display: flex;
+  justify-content: space-between; align-items: flex-start; gap: 12px; background: var(--bento-card);
 }
 .det-info { flex: 1; min-width: 0; }
-.det-title { font-size: 16px; font-weight: 600; margin-bottom: 4px; color: var(--tc); letter-spacing: -0.01em; }
-.det-time { font-size: 12px; color: var(--ts); }
+.det-title { font-size: 16px; font-weight: 600; margin-bottom: 4px; color: var(--bento-text); letter-spacing: -0.01em; }
+.det-time { font-size: 12px; color: var(--bento-text-secondary); }
 .det-badge {
   display: inline-flex; align-items: center; gap: 5px; padding: 4px 12px;
   border-radius: 20px; font-size: 11px; font-weight: 600; white-space: nowrap;
@@ -1508,29 +2102,29 @@ class HATraceViewer extends HTMLElement {
 .det-dur { margin-left: 4px; opacity: 0.8; }
 .det-badge.s-success { background: rgba(16, 185, 129, 0.1); color: #059669; }
 .det-badge.s-error { background: rgba(239, 68, 68, 0.1); color: #DC2626; }
-.det-badge.s-running { background: rgba(59, 130, 246, 0.1); color: var(--pc); }
+.det-badge.s-running { background: rgba(59, 130, 246, 0.1); color: var(--bento-primary); }
 .det-badge.s-aborted { background: rgba(245, 158, 11, 0.1); color: #B45309; }
 
 /* Flow graph */
 .det-flow {
-  padding: 16px 20px; border-bottom: 1px solid var(--dc); display: flex;
-  justify-content: center; background: var(--bg); overflow-x: auto;
+  padding: 16px 20px; border-bottom: 1px solid var(--bento-border); display: flex;
+  justify-content: center; background: var(--bento-bg); overflow-x: auto;
 }
 .flow-graph { display: block; }
 
 /* Detail tabs */
 .det-tabs {
-  display: flex; gap: 4px; border-bottom: 2px solid var(--dc); padding: 0 16px;
+  display: flex; gap: 4px; border-bottom: 2px solid var(--bento-border); padding: 0 16px;
   overflow-x: auto; margin-bottom: 0;
 }
 .dtab {
   padding: 10px 20px; background: transparent; border: none; border-bottom: 2px solid transparent;
-  color: var(--ts); cursor: pointer; font-size: 14px; font-weight: 500;
+  color: var(--bento-text-secondary); cursor: pointer; font-size: 14px; font-weight: 500;
   transition: var(--tr); margin-bottom: -2px; white-space: nowrap;
   border-radius: 8px 8px 0 0; font-family: 'Inter', sans-serif;
 }
-.dtab.act { color: var(--pc); border-bottom-color: var(--pc); background: rgba(59, 130, 246, 0.04); }
-.dtab:hover { color: var(--pc); background: rgba(59, 130, 246, 0.04); }
+.dtab.act { color: var(--bento-primary); border-bottom-color: var(--bento-primary); background: rgba(59, 130, 246, 0.04); }
+.dtab:hover { color: var(--bento-primary); background: rgba(59, 130, 246, 0.04); }
 
 /* Tab panes */
 .det-body { flex: 1; overflow-y: auto; padding: 16px 20px; }
@@ -1539,14 +2133,14 @@ class HATraceViewer extends HTMLElement {
 
 /* Timeline steps */
 .tl-step {
-  margin-bottom: 10px; border-left: 3px solid var(--dc); padding: 12px 14px;
-  background: var(--cbg); border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
+  margin-bottom: 10px; border-left: 3px solid var(--bento-border); padding: 12px 14px;
+  background: var(--bento-card); border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
   transition: var(--tr);
 }
 .tl-step:hover { box-shadow: var(--shadow); }
-.tl-step.s-success { border-left-color: var(--sc); }
-.tl-step.s-error { border-left-color: var(--ec); }
-.tl-step.s-skipped { border-left-color: var(--ts); opacity: 0.6; }
+.tl-step.s-success { border-left-color: var(--bento-success); }
+.tl-step.s-error { border-left-color: var(--bento-error); }
+.tl-step.s-skipped { border-left-color: var(--bento-text-secondary); opacity: 0.6; }
 .tl-head { display: flex; gap: 10px; align-items: center; }
 .tl-num {
   width: 24px; height: 24px; border-radius: 50%; color: #fff;
@@ -1554,72 +2148,72 @@ class HATraceViewer extends HTMLElement {
   font-weight: 600;
 }
 .tl-title { flex: 1; display: flex; flex-direction: column; gap: 2px; }
-.tl-cat { font-size: 10px; font-weight: 700; color: var(--pc); text-transform: uppercase; letter-spacing: 0.04em; }
-.tl-desc { font-size: 13px; font-weight: 500; color: var(--tc); }
-.tl-dur { font-size: 11px; color: var(--ts); white-space: nowrap; font-weight: 600; }
+.tl-cat { font-size: 10px; font-weight: 700; color: var(--bento-primary); text-transform: uppercase; letter-spacing: 0.04em; }
+.tl-desc { font-size: 13px; font-weight: 500; color: var(--bento-text); }
+.tl-dur { font-size: 11px; color: var(--bento-text-secondary); white-space: nowrap; font-weight: 600; }
 .tl-err {
   margin-top: 8px; padding: 8px 12px; background: rgba(239, 68, 68, 0.08);
   border-radius: var(--radius-xs); font-size: 12px; color: #DC2626;
 }
 .tl-dets { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 4px 14px; }
-.tl-det { font-size: 11px; color: var(--ts); word-break: break-word; }
-.tl-det b { color: var(--tc); font-weight: 600; }
-.tl-ts { font-size: 10px; color: var(--ts); margin-top: 4px; opacity: 0.6; }
+.tl-det { font-size: 11px; color: var(--bento-text-secondary); word-break: break-word; }
+.tl-det b { color: var(--bento-text); font-weight: 600; }
+.tl-ts { font-size: 10px; color: var(--bento-text-secondary); margin-top: 4px; opacity: 0.6; }
 
 /* Related activity */
 .rel-list { display: flex; flex-direction: column; gap: 8px; }
 .rel-item {
-  padding: 12px 14px; border: 1px solid var(--dc); border-radius: var(--radius-xs);
+  padding: 12px 14px; border: 1px solid var(--bento-border); border-radius: var(--radius-xs);
   display: flex; flex-direction: column; gap: 4px; transition: var(--tr);
-  background: var(--cbg);
+  background: var(--bento-card);
 }
-.rel-item:hover { border-color: var(--pc); box-shadow: var(--shadow); }
-.rel-entity { font-size: 13px; font-weight: 600; color: var(--pc); }
-.rel-action { font-size: 13px; color: var(--tc); }
-.rel-time { font-size: 11px; color: var(--ts); }
+.rel-item:hover { border-color: var(--bento-primary); box-shadow: var(--shadow); }
+.rel-entity { font-size: 13px; font-weight: 600; color: var(--bento-primary); }
+.rel-action { font-size: 13px; color: var(--bento-text); }
+.rel-time { font-size: 11px; color: var(--bento-text-secondary); }
 
 /* Changed vars */
 .cv-item {
-  margin-bottom: 10px; border: 1px solid var(--dc); border-radius: var(--radius-xs);
-  overflow: hidden; background: var(--cbg);
+  margin-bottom: 10px; border: 1px solid var(--bento-border); border-radius: var(--radius-xs);
+  overflow: hidden; background: var(--bento-card);
 }
 .cv-head {
-  display: flex; gap: 8px; padding: 8px 12px; background: var(--bg);
-  font-size: 12px; align-items: center; border-bottom: 1px solid var(--dc);
+  display: flex; gap: 8px; padding: 8px 12px; background: var(--bento-bg);
+  font-size: 12px; align-items: center; border-bottom: 1px solid var(--bento-border);
 }
-.cv-step { color: var(--pc); font-weight: 700; }
-.cv-name { font-weight: 500; color: var(--tc); }
+.cv-step { color: var(--bento-primary); font-weight: 700; }
+.cv-name { font-weight: 500; color: var(--bento-text); }
 .cv-val {
   margin: 0; padding: 10px 12px; font-family: 'SF Mono', 'Monaco', 'Menlo', 'Consolas', monospace;
-  font-size: 12px; overflow-x: auto; color: var(--tc); line-height: 1.5;
-  white-space: pre-wrap; word-break: break-word; background: var(--cbg);
+  font-size: 12px; overflow-x: auto; color: var(--bento-text); line-height: 1.5;
+  white-space: pre-wrap; word-break: break-word; background: var(--bento-card);
 }
 
 /* Config */
 .config-header {
-  font-size: 12px; font-weight: 600; color: var(--ts); text-transform: uppercase;
+  font-size: 12px; font-weight: 600; color: var(--bento-text-secondary); text-transform: uppercase;
   letter-spacing: 0.04em; margin-bottom: 10px;
 }
 .yaml-content {
-  margin: 0; padding: 16px; background: var(--bg); border: 1px solid var(--dc);
+  margin: 0; padding: 16px; background: var(--bento-bg); border: 1px solid var(--bento-border);
   border-radius: var(--radius-sm); font-family: 'SF Mono', 'Monaco', 'Menlo', 'Consolas', monospace;
-  font-size: 12px; overflow-x: auto; color: var(--tc); line-height: 1.6;
+  font-size: 12px; overflow-x: auto; color: var(--bento-text); line-height: 1.6;
   max-height: 600px; overflow-y: auto; white-space: pre-wrap; word-break: break-word;
 }
 
 /* JSON */
 .json-bar { margin-bottom: 8px; display: flex; gap: 8px; }
 .json-content {
-  margin: 0; padding: 16px; background: var(--bg); border: 1px solid var(--dc);
+  margin: 0; padding: 16px; background: var(--bento-bg); border: 1px solid var(--bento-border);
   border-radius: var(--radius-sm); font-family: 'SF Mono', 'Monaco', 'Menlo', 'Consolas', monospace;
-  font-size: 12px; overflow-x: auto; color: var(--tc); line-height: 1.5;
+  font-size: 12px; overflow-x: auto; color: var(--bento-text); line-height: 1.5;
   max-height: 600px; overflow-y: auto;
 }
 
 /* Loading spinner */
 .spinner {
-  width: 32px; height: 32px; border: 3px solid var(--dc);
-  border-top: 3px solid var(--pc); border-radius: 50%;
+  width: 32px; height: 32px; border: 3px solid var(--bento-border);
+  border-top: 3px solid var(--bento-primary); border-radius: 50%;
   animation: spin 0.8s linear infinite; margin: 24px auto;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -1628,34 +2222,152 @@ class HATraceViewer extends HTMLElement {
 /* Scrollbar */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--dc); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: var(--ts); }
+::-webkit-scrollbar-thumb { background: var(--bento-border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--bento-text-secondary); }
 
 /* Responsive */
 @media (max-width: 1200px) { .pan-right { display: none; } }
 @media (max-width: 900px) { .pan-left { display: none !important; } .pan-center.expanded { min-width: 100%; } }
-@media (max-width: 768px) { 
-  .stats { grid-template-columns: repeat(2, 1fr); } 
-  .panels { flex-direction: column; } 
-  .pan-left { display: block !important; width: 100% !important; max-height: 200px; overflow-y: auto; border-right: none; border-bottom: 1px solid var(--dc); min-width: auto; }
+@media (max-width: 768px) {
+  .stats { grid-template-columns: repeat(2, 1fr); }
+  .panels { flex-direction: column; }
+  .pan-left { display: block !important; width: 100% !important; max-height: 30vh; overflow-y: auto; border-right: none; border-bottom: 1px solid var(--bento-border); min-width: auto; }
   .pan-center { width: 100% !important; min-width: 0 !important; flex: 1; }
-  .pan-right { display: none !important; }
+  .pan-right { display: block !important; width: 100% !important; min-width: auto; max-height: none; overflow-y: auto; border-right: none; border-top: 1px solid var(--bento-border); flex: 1; min-height: 300px; }
+  .pan-right:empty, .pan-right .empty { display: none; }
 }
+
+
+@media (prefers-color-scheme: dark) {
+  :host {
+    --bento-bg: var(--primary-background-color, #1a1a2e);
+    --bento-card: var(--card-background-color, #16213e);
+    --bento-text: var(--primary-text-color, #e2e8f0);
+    --bento-text-secondary: var(--secondary-text-color, #94a3b8);
+    --bento-border: var(--divider-color, #334155);
+    --bento-shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
+    --bento-shadow-md: 0 4px 12px rgba(0,0,0,0.4);
+  }
+}
+/* === DARK MODE ADDED - old comment below === */
+
+        /* === MOBILE FIX === */
+        @media (max-width: 768px) {
+          .tabs { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; gap: 2px; }
+          .tab, .tab-btn, .tab-btn { padding: 6px 10px; font-size: 12px; white-space: nowrap; }
+          .card, .card-container { padding: 14px; }
+          .stats, .stats-grid, .summary-grid, .stat-cards, .kpi-grid, .metrics-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+          .stat-val, .kpi-val, .metric-val { font-size: 18px; }
+          .stat-lbl, .kpi-lbl, .metric-lbl { font-size: 10px; }
+          .panels, .board { flex-direction: column; }
+          .column { min-width: unset; }
+          h2 { font-size: 18px; }
+          h3 { font-size: 15px; }
+        }
+        @media (max-width: 480px) {
+          .tabs { gap: 1px; }
+          .tab, .tab-btn, .tab-btn { padding: 5px 8px; font-size: 11px; }
+          .stats, .stats-grid, .summary-grid, .stat-cards, .kpi-grid, .metrics-grid { grid-template-columns: 1fr 1fr; }
+          .stat-val, .kpi-val, .metric-val { font-size: 16px; }
+        }
+      
+        /* Settings Info Bar */
+
+/* === Container-based responsive (for dashboard cards) === */
+.card.compact-hide-right .pan-right { display: none; }
+.card.compact-hide-left .pan-left { display: none !important; }
+.card.compact-hide-left .pan-center.expanded { min-width: 100%; }
+.card.compact-mobile .stats { grid-template-columns: repeat(2, 1fr); }
+.card.compact-mobile .panels { flex-direction: column; }
+.card.compact-mobile .pan-left { display: block !important; width: 100% !important; max-height: 30vh; overflow-y: auto; border-right: none; border-bottom: 1px solid var(--bento-border); min-width: auto; }
+.card.compact-mobile .pan-center { width: 100% !important; min-width: 0 !important; flex: 1; }
+.card.compact-mobile .pan-right { display: block !important; width: 100% !important; min-width: auto; max-height: none; overflow-y: auto; border-right: none; border-top: 1px solid var(--bento-border); flex: 1; min-height: 300px; }
+.card.compact-mobile .pan-right:empty, .card.compact-mobile .pan-right .empty { display: none; }
+.card.compact-mobile .tabs { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; gap: 2px; }
+.card.compact-mobile .tab, .card.compact-mobile .tab-btn { padding: 6px 10px; font-size: 12px; white-space: nowrap; }
+.card.compact-mobile .card-container { padding: 14px; }
+.card.compact-mobile .stats, .card.compact-mobile .stats-grid, .card.compact-mobile .summary-grid, .card.compact-mobile .stat-cards, .card.compact-mobile .kpi-grid, .card.compact-mobile .metrics-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.card.compact-mobile .stat-val, .card.compact-mobile .kpi-val, .card.compact-mobile .metric-val { font-size: 18px; }
+.card.compact-mobile .stat-lbl, .card.compact-mobile .kpi-lbl, .card.compact-mobile .metric-lbl { font-size: 10px; }
+.card.compact-mobile .panels, .card.compact-mobile .board { flex-direction: column; }
+.card.compact-mobile .column { min-width: unset; }
+.card.compact-mobile h2 { font-size: 18px; }
+.card.compact-mobile h3 { font-size: 15px; }
+.card.compact-xs .tabs { gap: 1px; }
+.card.compact-xs .tab, .card.compact-xs .tab-btn { padding: 5px 8px; font-size: 11px; }
+.card.compact-xs .stats, .card.compact-xs .stats-grid, .card.compact-xs .summary-grid, .card.compact-xs .stat-cards, .card.compact-xs .kpi-grid, .card.compact-xs .metrics-grid { grid-template-columns: 1fr 1fr; }
+.card.compact-xs .stat-val, .card.compact-xs .kpi-val, .card.compact-xs .metric-val { font-size: 16px; }
+
 </style>`;
   }
 
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ LIFECYCLE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ============================================================
 
-  connectedCallback() { if (this._hass) this.updateAutomationData(); }
-  disconnectedCallback() { if (this.relativeTimeUpdater) clearInterval(this.relativeTimeUpdater); }
+  connectedCallback() {
+    if (this._hass) this.updateAutomationData();
+    // ResizeObserver for mobile view in small dashboard cards
+    this._resizeObserver = new ResizeObserver(() => this._applyCompactClasses());
+    this._resizeObserver.observe(this);
+  }
+  disconnectedCallback() {
+    if (this.relativeTimeUpdater) clearInterval(this.relativeTimeUpdater);
+    if (this._resizeObserver) { this._resizeObserver.disconnect(); this._resizeObserver = null; }
+    if (this._expDDClose) { document.removeEventListener('click', this._expDDClose); this._expDDClose = null; }
+  }
   static getConfigElement() { return document.createElement('ha-trace-viewer-editor'); }
+  getCardSize() { return 10; }
+
   static getStubConfig() { return { type: 'custom:ha-trace-viewer', title: 'Trace Viewer' }; }
 }
 
-customElements.define('ha-trace-viewer', HATraceViewer);
+if (!customElements.get('ha-trace-viewer')) customElements.define('ha-trace-viewer', HATraceViewer);
+
 
 if (!customElements.get('ha-tools-panel')) {
   const _cs = document.currentScript?.src || '';
   const _bu = _cs.substring(0, _cs.lastIndexOf('/') + 1);
   if (_bu) { const s = document.createElement('script'); s.src = _bu + 'ha-tools-panel.js'; document.head.appendChild(s); }
 }
+
+class HaTraceViewerEditor extends HTMLElement {
+  constructor() {
+    super();
+    this.attachShadow({ mode: 'open' });
+    this._config = {};
+  }
+  setConfig(config) {
+    this._config = { ...config };
+    this._render();
+  }
+  _dispatch() {
+    this.dispatchEvent(new CustomEvent('config-changed', { detail: { config: this._config }, bubbles: true, composed: true }));
+  }
+  _render() {
+    this.shadowRoot.innerHTML = `
+      <style>
+            :host { display:block; padding:16px; }
+            h3 { margin:0 0 16px; font-size:15px; font-weight:600; color:var(--bento-text, var(--primary-text-color,#1e293b)); }
+            input { outline:none; transition:border-color .2s; }
+            input:focus { border-color:var(--bento-primary, var(--primary-color,#3b82f6)); }
+        </style>
+      <h3>Trace Viewer</h3>
+            <div style="margin-bottom:12px;">
+              <label style="display:block;font-weight:500;margin-bottom:4px;font-size:13px;">Title</label>
+              <input type="text" id="cf_title" value="${_esc(this._config?.title || 'Trace Viewer')}"
+                style="width:100%;padding:8px 12px;border:1px solid var(--divider-color,#e2e8f0);border-radius:8px;background:var(--card-background-color,#fff);color:var(--primary-text-color,#1e293b);font-size:14px;box-sizing:border-box;">
+            </div>
+    `;
+        const f_title = this.shadowRoot.querySelector('#cf_title');
+        if (f_title) f_title.addEventListener('input', (e) => {
+          this._config = { ...this._config, title: e.target.value };
+          this._dispatch();
+        });
+  }
+  connectedCallback() { this._render(); }
+}
+if (!customElements.get('ha-trace-viewer-editor')) { customElements.define('ha-trace-viewer-editor', HaTraceViewerEditor); }
+
+})();
+
+window.customCards = window.customCards || [];
+window.customCards.push({ type: 'ha-trace-viewer', name: 'HA Trace Viewer', description: 'Automation trace viewer for Home Assistant' });
