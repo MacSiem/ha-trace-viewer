@@ -1,5 +1,7 @@
 {
-    "name":  "Trace Viewer",
-    "filename":  "ha-trace-viewer.js",
-    "render_readme":  true
+  "name": "Trace Viewer",
+  "filename": "ha-trace-viewer.js",
+  "render_readme": true,
+  "content_in_root": true,
+  "homeassistant": "2024.1.0"
 }
