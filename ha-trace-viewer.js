@@ -873,6 +873,33 @@ class HATraceViewer extends HTMLElement {
     return Object.values(merged);
   }
 
+  _traceKey(id) {
+    return id === null || id === undefined ? null : String(id);
+  }
+
+  _buildTraceBucket(traces) {
+    const bucket = { count: 0, lastRun: null, traces: [] };
+    for (const t of traces) {
+      bucket.count++;
+      bucket.traces.push(t);
+      const st = t.timestamp?.start ? new Date(t.timestamp.start) : null;
+      if (st && (!bucket.lastRun || st > bucket.lastRun)) bucket.lastRun = st;
+    }
+    return bucket;
+  }
+
+  _cacheItemTraces(itemId, traces) {
+    const key = this._traceKey(itemId);
+    if (!key) return null;
+    const normalized = traces.map(t => ({ ...t, item_id: t.item_id ?? itemId }));
+    this._traceMap[key] = this._buildTraceBucket(normalized);
+    for (const t of normalized) {
+      this._storedTraces[t.item_id + '::' + t.run_id] = t;
+    }
+    this._saveStoredTraces();
+    return this._traceMap[key];
+  }
+
   _getStoredTraceCount() {
     return Object.keys(this._storedTraces).length;
   }
@@ -986,7 +1013,8 @@ class HATraceViewer extends HTMLElement {
 
     this._traceMap = {};
     this._allTraces.forEach(t => {
-      const key = t.item_id;
+      const key = this._traceKey(t.item_id);
+      if (!key) return;
       if (!this._traceMap[key]) this._traceMap[key] = { count: 0, lastRun: null, traces: [] };
       this._traceMap[key].count++;
       this._traceMap[key].traces.push(t);
@@ -999,8 +1027,9 @@ class HATraceViewer extends HTMLElement {
       .map(([entity, state]) => {
         const name = state.attributes?.friendly_name || entity.replace('automation.', '');
         const automationId = state.attributes?.id || null;
+        const automationKey = this._traceKey(automationId);
         const lastTriggered = state.attributes?.last_triggered ? new Date(state.attributes.last_triggered) : null;
-        const traceInfo = automationId ? this._traceMap[automationId] : null;
+        const traceInfo = automationKey ? this._traceMap[automationKey] : null;
         return {
           entity, name, automationId,
           isActive: state.state === 'on', lastTriggered,
@@ -1011,7 +1040,8 @@ class HATraceViewer extends HTMLElement {
 
     this._allFlatTraces = [];
     for (const t of this._allTraces) {
-      const auto = this._rawAutomations.find(a => a.automationId === t.item_id);
+      const traceKey = this._traceKey(t.item_id);
+      const auto = this._rawAutomations.find(a => this._traceKey(a.automationId) === traceKey);
       const st = t.timestamp?.start ? new Date(t.timestamp.start) : new Date();
       const ft = t.timestamp?.finish ? new Date(t.timestamp.finish) : st;
       this._allFlatTraces.push({
@@ -1150,27 +1180,56 @@ class HATraceViewer extends HTMLElement {
     this._loadTraces(entity);
   }
 
-  _loadTraces(entity) {
+  _traceSummary(t, auto, entity, fallbackItemId) {
+    const st = t.timestamp?.start ? new Date(t.timestamp.start) : new Date();
+    const ft = t.timestamp?.finish ? new Date(t.timestamp.finish) : st;
+    return {
+      id: t.run_id, item_id: t.item_id ?? fallbackItemId, automationEntity: entity,
+      automationName: auto?.name || entity,
+      timestamp: st, finishTime: ft,
+      status: this._traceStatus(t), duration: ft - st,
+      lastStep: t.last_step || '', scriptExecution: t.script_execution || '',
+      trigger: t.trigger || 'unknown', raw: t
+    };
+  }
+
+  _applyTraceBucket(bucket, auto, entity, aid) {
+    let list = bucket.traces.map(t => this._traceSummary(t, auto, entity, aid))
+      .sort((a, b) => b.timestamp - a.timestamp);
+    this.traces = this._filterByTime(list);
+    if (this.traceFilterResult !== 'all') this.traces = this.traces.filter(x => x.status === this.traceFilterResult);
+  }
+
+  async _loadTraces(entity) {
+    const loadToken = {};
+    this._traceLoadToken = loadToken;
+    this.traces = [];
+    this.selectedTrace = null;
+    this.traceDetail = null;
+    this.tracePage = 0;
+    this.render();
+
     const auto = this._rawAutomations.find(a => a.entity === entity);
     const aid = auto?.automationId;
-    if (aid && this._traceMap[aid]) {
-      let list = this._traceMap[aid].traces.map(t => {
-        const st = t.timestamp?.start ? new Date(t.timestamp.start) : new Date();
-        const ft = t.timestamp?.finish ? new Date(t.timestamp.finish) : st;
-        return {
-          id: t.run_id, item_id: t.item_id, automationEntity: entity,
-          automationName: auto?.name || entity,
-          timestamp: st, finishTime: ft,
-          status: this._traceStatus(t), duration: ft - st,
-          lastStep: t.last_step || '', scriptExecution: t.script_execution || '',
-          trigger: t.trigger || 'unknown', raw: t
-        };
-      }).sort((a, b) => b.timestamp - a.timestamp);
-      this.traces = this._filterByTime(list);
-      if (this.traceFilterResult !== 'all') this.traces = this.traces.filter(x => x.status === this.traceFilterResult);
-      this.tracePage = 0;
-    } else {
-      this.traces = [];
+    const aidKey = this._traceKey(aid);
+    if (!aidKey) return;
+
+    if (this._traceMap[aidKey]) {
+      this._applyTraceBucket(this._traceMap[aidKey], auto, entity, aid);
+      this.render();
+      return;
+    }
+
+    try {
+      const liveTraces = await this._hass.callWS({ type: 'trace/list', domain: 'automation', item_id: aid });
+      if (this._traceLoadToken !== loadToken || this.selectedAutomation !== entity) return;
+      const bucket = this._cacheItemTraces(aid, Array.isArray(liveTraces) ? liveTraces : []);
+      if (bucket) {
+        auto.triggerCount = bucket.count;
+        this._applyTraceBucket(bucket, auto, entity, aid);
+      }
+    } catch (e) {
+      console.warn('[Trace Viewer] Could not fetch automation traces:', e);
     }
     this.render();
   }
@@ -1494,8 +1553,9 @@ class HATraceViewer extends HTMLElement {
     for (const entity of autoEntities) {
       const auto = this._rawAutomations.find(a => a.entity === entity);
       const aid = auto?.automationId;
-      if (aid && this._traceMap[aid]) {
-        for (const t of this._traceMap[aid].traces) {
+      const aidKey = this._traceKey(aid);
+      if (aidKey && this._traceMap[aidKey]) {
+        for (const t of this._traceMap[aidKey].traces) {
           const st = t.timestamp?.start ? new Date(t.timestamp.start) : new Date();
           const ft = t.timestamp?.finish ? new Date(t.timestamp.finish) : st;
           allTraces.push({
