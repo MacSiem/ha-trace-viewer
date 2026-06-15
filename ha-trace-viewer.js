@@ -1,4 +1,4 @@
-/* HA Tools split — ha-trace-viewer v4.1.7 (2026-06-07) — single-tool standalone repo */
+/* HA Tools split — ha-trace-viewer v4.1.8 (2026-06-07) — single-tool standalone repo */
 (function() {
 'use strict';
 
@@ -16,6 +16,8 @@ if (typeof window !== 'undefined' && !window.HAToolsBentoCSS) {
    HA Tools — Bento Design System v2.0 (Premium)
    ═══════════════════════════════════════════════ */
 
+/* keyboard a11y */
+:focus-visible { outline: 2px solid var(--bento-primary, #6366f1); outline-offset: 2px; border-radius: 3px; }
 
 :host {
   /* Brand palette — diamond top, gradient-friendly */
@@ -1710,7 +1712,7 @@ class HATraceViewer extends HTMLElement {
     const totalPages = Math.ceil(list.length / ps);
     if (this.tracePage >= totalPages) this.tracePage = Math.max(0, totalPages - 1);
     const pageList = list.slice(this.tracePage * ps, (this.tracePage + 1) * ps);
-    const pag = totalPages > 1 ? `<div class="pag"><button class="pag-btn" data-pdir="-1" ${this.tracePage===0?'disabled':''}>‹ Prev</button><span class="pag-info">Page ${this.tracePage+1}/${totalPages} (${list.length} traces)</span><button class="pag-btn" data-pdir="1" ${this.tracePage>=totalPages-1?'disabled':''}>Next ›</button><select class="pag-size" id="pagSize"><option value="15" ${ps===15?'selected':''}>15/page</option><option value="30" ${ps===30?'selected':''}>30/page</option><option value="50" ${ps===50?'selected':''}>50/page</option><option value="100" ${ps===100?'selected':''}>100/page</option></select></div>` : '';
+    const pag = totalPages > 1 ? `<div class="pag"><button class="pag-btn" data-pdir="-1" ${this.tracePage===0?'disabled':''} aria-label="${this._t('previousPage')}">‹ Prev</button><span class="pag-info">Page ${this.tracePage+1}/${totalPages} (${list.length} traces)</span><button class="pag-btn" data-pdir="1" ${this.tracePage>=totalPages-1?'disabled':''} aria-label="${this._t('nextPage')}">Next ›</button><select class="pag-size" id="pagSize"><option value="15" ${ps===15?'selected':''}>15/page</option><option value="30" ${ps===30?'selected':''}>30/page</option><option value="50" ${ps===50?'selected':''}>50/page</option><option value="100" ${ps===100?'selected':''}>100/page</option></select></div>` : '';
     return statsHtml + pag + `<div class="list">${pageList.map(t => this._renderTraceItem(t)).join('')}</div>` + pag;
   }
 
