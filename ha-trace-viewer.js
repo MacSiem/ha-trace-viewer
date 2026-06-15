@@ -1,4 +1,4 @@
-/* HA Tools split — ha-trace-viewer v4.1.6 (2026-06-07) — single-tool standalone repo */
+/* HA Tools split — ha-trace-viewer v4.1.7 (2026-06-07) — single-tool standalone repo */
 (function() {
 'use strict';
 
@@ -1013,7 +1013,9 @@ class HATraceViewer extends HTMLElement {
     let liveTraces = [];
     try {
       liveTraces = await this._hass.callWS({ type: 'trace/list', domain: 'automation' });
+      this._fetchError = null;
     } catch (e) {
+      this._fetchError = (e && e.message) ? 'Could not load traces: ' + e.message : 'Could not load traces';
       console.warn('[Trace Viewer] Could not fetch traces:', e);
     }
 
@@ -1834,6 +1836,7 @@ class HATraceViewer extends HTMLElement {
     this.shadowRoot.innerHTML = `${this._css()}
     <div class="card">
       <div class="col-main">
+        ${this._fetchError ? `<div style="margin:0 0 10px;padding:10px 14px;background:var(--bento-error-light,rgba(239,68,68,0.08));color:var(--bento-error,#EF4444);border:1px solid var(--bento-error-border,rgba(239,68,68,0.25));border-radius:var(--bento-radius-sm,10px);font-size:13px;font-weight:500">⚠ ${this._fetchError}</div>` : ''}
         <!-- TOP BAR -->
         <div class="topbar">
           <span class="title">${this.config.title || this._t('traceViewer')}</span>
