@@ -1,3 +1,10 @@
+## 4.1.12 (2026-08-20)
+
+- Security: escape automation friendly names, trace group names (including the
+  `data-group` attribute), trace fetch errors, and the configured card title
+  before inserting them into the card's HTML.
+- Tests: add regression coverage for all three user-controlled HTML paths.
+
 ## 4.1.11 (2026-07-18)
 
 - Fix (UI): the small accent dot before section titles no longer detaches from the title text (it was pushed to the opposite edge by the header's flex space-between); it is now pinned next to the title.

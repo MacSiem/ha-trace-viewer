@@ -199,8 +199,54 @@ async function testNumericAutomationUsesCachedTraceBucket() {
   assert.strictEqual(viewer.traces[0].item_id, '1772654249135');
 }
 
+function assertEscaped(html, payload, escapedFragment) {
+  assert(!html.includes(payload), `raw payload leaked into HTML: ${payload}`);
+  assert(html.includes(escapedFragment), `escaped payload missing from HTML: ${escapedFragment}`);
+}
+
+function testUserControlledValuesAreHtmlEscaped() {
+  const HATraceViewer = loadViewerClass();
+  const viewer = new HATraceViewer();
+  const payload = '<img src=x onerror="alert(1)">';
+  const escaped = '&lt;img src=x onerror=&quot;alert(1)&quot;&gt;';
+
+  viewer.automations = [{
+    entity: 'automation.xss_probe',
+    name: payload,
+    status: 'running',
+    lastTriggered: null,
+    triggerCount: 1,
+  }];
+  assertEscaped(viewer._renderAutoList(), payload, escaped);
+
+  viewer.viewMode = 'all-traces';
+  viewer.groupBy = 'automation';
+  viewer._allFlatTraces = [{
+    id: 'run-xss-1',
+    automationName: payload,
+    timestamp: new Date('2026-08-20T07:00:00.000Z'),
+    status: 'success',
+    duration: 10,
+    trigger: 'manual',
+    lastStep: 'done',
+    scriptExecution: 'finished',
+  }];
+  assertEscaped(viewer._renderTracesList(), payload, escaped);
+
+  viewer._hass = { language: 'en', states: {} };
+  viewer._fetchError = payload;
+  viewer.render();
+  assertEscaped(viewer.shadowRoot.innerHTML, payload, escaped);
+
+  viewer._fetchError = null;
+  viewer.config = { title: payload };
+  viewer.render();
+  assertEscaped(viewer.shadowRoot.innerHTML, payload, escaped);
+}
+
 (async () => {
   await testYamlAutomationFetchesPerItemTracesAndClearsStaleState();
   await testNumericAutomationUsesCachedTraceBucket();
+  testUserControlledValuesAreHtmlEscaped();
   console.log('trace viewer regression tests passed');
 })();

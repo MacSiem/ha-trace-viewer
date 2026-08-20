@@ -1,4 +1,4 @@
-/* HA Tools split — ha-trace-viewer v4.1.11 (2026-06-07) — single-tool standalone repo */
+/* HA Tools split — ha-trace-viewer v4.1.12 (2026-08-20) — single-tool standalone repo */
 (function() {
 'use strict';
 
@@ -1683,7 +1683,7 @@ class HATraceViewer extends HTMLElement {
       <div class="auto-item ${isSel ? 'sel' : ''} ${isChk ? 'chk' : ''} s-${a.status}" data-auto="${a.entity}">
         ${this.selectMode ? `<span class="tr-cb" data-autocheck="${a.entity}">${isChk ? '\u2611' : '\u2610'}</span>` : ''}
         <div style="flex:1;min-width:0">
-          <div class="auto-name">${this._sanitize(a.name)}</div>
+          <div class="auto-name">${_esc(this._sanitize(a.name))}</div>
           <div class="auto-meta">
             <span class="auto-dot s-${a.status}"></span>
             <span data-ts="${a.lastTriggered?.toISOString() || ''}">${a.lastTriggered ? this._relTime(a.lastTriggered) : 'Never'}</span>
@@ -1715,8 +1715,8 @@ class HATraceViewer extends HTMLElement {
       const groups = this._groupTraces(list);
       return statsHtml + `<div class="list">${groups.map(g => `
         <div class="tgroup">
-          <div class="tgroup-h" data-group="${g.name}">
-            <span class="tg-tog">\u25BC</span><span class="tg-name">${this._sanitize(g.name)}</span>
+          <div class="tgroup-h" data-group="${_esc(g.name)}">
+            <span class="tg-tog">\u25BC</span><span class="tg-name">${_esc(this._sanitize(g.name))}</span>
             <span class="tg-cnt">${g.count}</span>
           </div>
           <div class="tgroup-items">${g.traces.map(t => this._renderTraceItem(t)).join('')}</div>
@@ -1853,10 +1853,10 @@ class HATraceViewer extends HTMLElement {
     this.shadowRoot.innerHTML = `${this._css()}
     <div class="card">
       <div class="col-main">
-        ${this._fetchError ? `<div style="margin:0 0 10px;padding:10px 14px;background:var(--bento-error-light,rgba(239,68,68,0.08));color:var(--bento-error,#EF4444);border:1px solid var(--bento-error-border,rgba(239,68,68,0.25));border-radius:var(--bento-radius-sm,10px);font-size:13px;font-weight:500">⚠ ${this._fetchError}</div>` : ''}
+        ${this._fetchError ? `<div style="margin:0 0 10px;padding:10px 14px;background:var(--bento-error-light,rgba(239,68,68,0.08));color:var(--bento-error,#EF4444);border:1px solid var(--bento-error-border,rgba(239,68,68,0.25));border-radius:var(--bento-radius-sm,10px);font-size:13px;font-weight:500">⚠ ${_esc(this._fetchError)}</div>` : ''}
         <!-- TOP BAR -->
         <div class="topbar">
-          <span class="title">${this.config.title || this._t('traceViewer')}</span>
+          <span class="title">${_esc(this.config.title || this._t('traceViewer'))}</span>
           <div class="topbar-r">
             <span class="trace-saved-badge" id="traceStorageInfo" title="${this._lang === 'pl' ? 'Zapisane trace\u2019y' : 'Saved traces'}" style="font-size:11px;color:var(--bento-text-secondary);padding:4px 8px;background:var(--bento-bg);border-radius:var(--radius-xs);border:1px solid var(--bento-border);display:inline-flex;align-items:center;gap:4px">\u{1F4BE} ${this._getStoredTraceCount()} saved</span><span class="trace-settings-btn" id="goToSettingsBtn" title="${this._lang === 'pl' ? 'Ustawienia Trace Viewer' : 'Trace Viewer Settings'}" style="font-size:11px;color:var(--bento-text-secondary);padding:4px 8px;background:var(--bento-bg);border-radius:var(--radius-xs);border:1px solid var(--bento-border);cursor:pointer;display:inline-flex;align-items:center;gap:4px;margin-left:6px">\u2699\uFE0F ${this._lang === 'pl' ? 'Ustawienia' : 'Settings'}</span>
             <div class="dd" id="expDD">
