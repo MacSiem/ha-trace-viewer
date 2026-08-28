@@ -57,6 +57,20 @@ const delay = (ms) => new Promise(r => setTimeout(r, ms));
 
 (async () => {
   const files = listCardFiles();
+  const forbiddenPersistence = 'window._haToolsPersistence';
+  if (files.some(f => fs.readFileSync(f, 'utf8').includes(forbiddenPersistence))) {
+    console.error('smoke: residual global persistence singleton');
+    process.exit(1);
+  }
+  const forbiddenLoaders = ['ha-tools-panel.js', 'ha-tools-discovery.js', 'HAToolsDiscovery', '_injectDiscovery', 'window.HAToolsBentoCSS'];
+  for (const f of files) {
+    const code = fs.readFileSync(f, 'utf8');
+    const residual = forbiddenLoaders.find(signature => code.includes(signature));
+    if (residual) {
+      console.error(`smoke: residual runtime dependency ${residual} in ${path.basename(f)}`);
+      process.exit(1);
+    }
+  }
   const targets = [];
   for (const f of files) {
     const code = fs.readFileSync(f, 'utf8');
@@ -70,6 +84,7 @@ const delay = (ms) => new Promise(r => setTimeout(r, ms));
       const dom = new JSDOM('<!DOCTYPE html><html><head></head><body></body></html>', { runScripts: 'dangerously', pretendToBeVisual: true, url: 'http://localhost/' });
       const { window } = dom;
       stub(window);
+      window.HAToolsBentoCSS = ':host{display:none!important}/* foreign-bento */';
       let asyncErr = null;
       window.addEventListener('error', e => { asyncErr = asyncErr || (e.error && e.error.message) || e.message; });
       window.onerror = (m) => { asyncErr = asyncErr || m; };
@@ -84,6 +99,18 @@ const delay = (ms) => new Promise(r => setTimeout(r, ms));
       if (!el.shadowRoot) problem = 'no shadowRoot';
       else if (len < 50) problem = 'empty render (len=' + len + ')';
       else if (asyncErr) problem = 'async error: ' + asyncErr;
+      else if (t.tag === 'ha-trace-viewer') {
+        const footers = el.shadowRoot.querySelectorAll('.donate-section[data-source="own-card"]');
+        const coffee = el.shadowRoot.querySelector('a[href="https://buymeacoffee.com/macsiem"]');
+        const paypal = el.shadowRoot.querySelector('a[href="https://www.paypal.com/donate/?hosted_button_id=Y967H4PLRBN8W"]');
+        if (footers.length !== 1) problem = `expected one card-owned footer, got ${footers.length}`;
+        else if (!coffee || coffee.target !== '_blank' || coffee.rel !== 'noopener noreferrer') problem = 'invalid Buy Me a Coffee link';
+        else if (!paypal || paypal.target !== '_blank' || paypal.rel !== 'noopener noreferrer') problem = 'invalid PayPal link';
+        else if (el.shadowRoot.innerHTML.includes('foreign-bento')) problem = 'render captured a foreign global Bento stylesheet';
+        else if (!el.shadowRoot.innerHTML.includes('HA Tools — Bento Design System v2.0')) problem = 'component-local Bento stylesheet missing';
+        else if (window.HAToolsBentoCSS !== ':host{display:none!important}/* foreign-bento */') problem = 'card mutated the pre-seeded global Bento stylesheet';
+        else if (window.document.head.querySelector('script')) problem = 'card injected a document-level script';
+      }
       window.close();
     } catch (e) { problem = (e && e.message) ? e.message : String(e); }
     if (problem) fail.push(`${t.tag}  (${path.basename(t.file)})  -> ${problem}`); else pass++;

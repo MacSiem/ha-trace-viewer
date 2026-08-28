@@ -1,3 +1,12 @@
+## 4.1.13 (2026-08-28)
+
+- Isolation: persistence is now card-local, removing `window._haToolsPersistence` load-order coupling while retaining existing localStorage keys.
+- Isolation: removed the document-wide sibling-card injector, shared global escape helper, and the remaining dynamic HA Tools Panel loader.
+- Isolation: Bento styling is component-local and no longer depends on or mutates `window.HAToolsBentoCSS` loaded by another card.
+- UI: the support footer now renders directly inside Trace Viewer's own shadow root and survives normal re-renders without a global loader.
+- Security: all runtime values use a local String-before-escape helper.
+- Tests: retained trace regressions and added portfolio residual verification.
+
 ## 4.1.12 (2026-08-20)
 
 - Security: escape automation friendly names, trace group names (including the
