@@ -1,4 +1,4 @@
-/* HA Tools split — ha-trace-viewer v4.1.13 (2026-08-28) — single-tool standalone repo */
+/* HA Tools split — ha-trace-viewer v4.1.14 (2026-09-01) — single-tool standalone repo */
 (function() {
 'use strict';
 
@@ -2439,7 +2439,9 @@ class HATraceViewer extends HTMLElement {
   }
   static getConfigElement() { return document.createElement('ha-trace-viewer-editor'); }
   getCardSize() { return 10; }
-  getGridOptions() { return { rows: 10, columns: 12, min_rows: 3, min_columns: 6 }; }
+  // Trace lists and detail panes are dynamic. Omitting rows tells Home
+  // Assistant Sections to use the card's natural content height.
+  getGridOptions() { return { columns: 12, min_columns: 6 }; }
 
   static getStubConfig() { return { type: 'custom:ha-trace-viewer', title: 'Trace Viewer' }; }
 }

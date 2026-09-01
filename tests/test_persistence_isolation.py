@@ -10,6 +10,14 @@ SOURCES = (
 
 
 class PersistenceIsolationTest(unittest.TestCase):
+    def test_sections_height_is_driven_by_the_dynamic_content(self):
+        source = (ROOT / "ha-trace-viewer.js").read_text(encoding="utf-8")
+        self.assertIn(
+            "getGridOptions() { return { columns: 12, min_columns: 6 }; }",
+            source,
+        )
+        self.assertNotRegex(source, r"getGridOptions\(\).*\brows\s*:")
+
     def test_persistence_never_uses_a_window_singleton(self):
         for relative_path in SOURCES:
             with self.subTest(path=relative_path):

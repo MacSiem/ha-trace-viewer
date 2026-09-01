@@ -1,3 +1,9 @@
+## 4.1.14 (2026-09-01)
+
+- Fixed Trace Viewer content crossing its Home Assistant Sections row boundary and overlapping the following card.
+- Sections now use the viewer's natural content height instead of a fixed ten-row allocation.
+- Added a regression check that rejects fixed row constraints for this dynamic card.
+
 ## 4.1.13 (2026-08-28)
 
 - Isolation: persistence is now card-local, removing `window._haToolsPersistence` load-order coupling while retaining existing localStorage keys.
