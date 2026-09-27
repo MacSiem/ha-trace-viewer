@@ -791,7 +791,7 @@ class HATraceViewer extends HTMLElement {
     return (T[lang] || T['en'])[key] || T['en'][key] || key;
   }
 
-  setConfig(config) { this.config = { title: 'Trace Viewer', ...config }; }
+  setConfig(config) { this.config = { title: 'Trace Viewer', ...config }; if (this._hass) this.render(); }
 
   set hass(hass) {
     try {
@@ -1725,16 +1725,7 @@ class HATraceViewer extends HTMLElement {
             ${this._renderDetail()}
           </div>
         </div>
-        <div class="donate-section" data-source="own-card">
-          <div class="donate-text">
-            <h3>❤️ Support HA Tools Development</h3>
-            <p>If this tool makes your Home Assistant life easier, consider supporting the project. Every coffee motivates further development!</p>
-          </div>
-          <div class="donate-buttons">
-            <a class="donate-btn coffee" href="https://buymeacoffee.com/macsiem" target="_blank" rel="noopener noreferrer">☕ Buy Me a Coffee</a>
-            <a class="donate-btn paypal" href="https://www.paypal.com/donate/?hosted_button_id=Y967H4PLRBN8W" target="_blank" rel="noopener noreferrer">💳 PayPal</a>
-          </div>
-        </div>
+        ${this._hass?.user?.is_admin && this.config?.show_support !== false && !this._supportDismissed() ? `<div class="donate-section" data-source="own-card" style="margin:8px 0;padding:8px 12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px"><span>❤️ Support HA Tools:</span><a href="https://buymeacoffee.com/macsiem" target="_blank" rel="noopener noreferrer">Buy Me a Coffee</a><a href="https://www.paypal.com/donate/?hosted_button_id=Y967H4PLRBN8W" target="_blank" rel="noopener noreferrer">PayPal</a><button type="button" class="support-dismiss" aria-label="Dismiss support link" style="margin-left:auto">×</button></div>` : ''}
       </div>
     </div>`;
     this._bindEvents();
@@ -1754,7 +1745,15 @@ class HATraceViewer extends HTMLElement {
 
   // ============================================================
 
+  _supportDismissed() {
+    try { return localStorage.getItem('ha-trace-viewer-support-dismissed') === '1'; } catch (_) { return false; }
+  }
+
   _bindEvents() {
+    this.shadowRoot.querySelector('.support-dismiss')?.addEventListener('click', () => {
+      try { localStorage.setItem('ha-trace-viewer-support-dismissed', '1'); } catch (_) {}
+      this.shadowRoot.querySelector('.donate-section[data-source="own-card"]')?.remove();
+    });
     const $ = s => this.shadowRoot.querySelector(s);
     const $$ = s => this.shadowRoot.querySelectorAll(s);
 
