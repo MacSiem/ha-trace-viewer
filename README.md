@@ -42,9 +42,9 @@ no extra integration:
 |---|---|
 | ![Traces, light theme](docs/screenshots/card-traces-light.png) | ![Traces, dark theme](docs/screenshots/card-traces-dark.png) |
 
-*An automation selected: run stats (total, success rate, average duration,
-errors) and the trace list. Dark mode follows your Home Assistant theme
-automatically.*
+*A synthetic automation selected: run stats (total, success rate, average
+duration, errors) and trace list. No household trace is shown. Dark mode
+follows your Home Assistant theme.*
 
 ## Installation
 
