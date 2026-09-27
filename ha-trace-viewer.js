@@ -2417,6 +2417,8 @@ class HATraceViewer extends HTMLElement {
 .card.compact-mobile h2 { font-size: 18px; }
 .card.compact-mobile h3 { font-size: 15px; }
 .card.compact-xs .tabs { gap: 1px; }
+.card.compact-xs .topbar { flex-wrap: wrap; gap: 8px; }
+.card.compact-xs .topbar-r { flex-wrap: wrap; min-width: 0; max-width: 100%; }
 .card.compact-xs .tab, .card.compact-xs .tab-btn { padding: 5px 8px; font-size: 11px; }
 .card.compact-xs .stats, .card.compact-xs .stats-grid, .card.compact-xs .summary-grid, .card.compact-xs .stat-cards, .card.compact-xs .kpi-grid, .card.compact-xs .metrics-grid { grid-template-columns: 1fr 1fr; }
 .card.compact-xs .stat-val, .card.compact-xs .kpi-val, .card.compact-xs .metric-val { font-size: 16px; }
