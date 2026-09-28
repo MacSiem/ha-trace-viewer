@@ -130,6 +130,26 @@ const delay = (ms) => new Promise(r => setTimeout(r, ms));
           if (card.shadowRoot.querySelector('.donate-section')) problem = mode + ' saw the support link';
           card.remove();
         }
+        if (!problem) {
+          window.localStorage.setItem('ha-tools-trace-viewer-stored', JSON.stringify([
+            { item_id: 'private-automation', run_id: 'private-run', timestamp: { start: '2026-09-28T00:00:00Z' } }
+          ]));
+          let traceRequests = 0;
+          const household = mockHass();
+          household.user.is_admin = false;
+          household.callWS = () => { traceRequests++; return Promise.reject(new Error('Unauthorized')); };
+          const card = window.document.createElement(t.tag);
+          card.setConfig({ type: 'custom:' + t.tag });
+          card.hass = household;
+          window.document.body.appendChild(card);
+          await delay(100);
+          const body = card.shadowRoot.textContent;
+          if (traceRequests !== 0) problem = 'household user requested admin trace API';
+          else if (!body.includes('administrator')) problem = 'household user lacks access explanation';
+          else if (body.includes('private-automation') || body.includes('private-run')) problem = 'household user saw stored admin trace';
+          card.remove();
+          window.localStorage.removeItem('ha-tools-trace-viewer-stored');
+        }
       }
       window.close();
     } catch (e) { problem = (e && e.message) ? e.message : String(e); }

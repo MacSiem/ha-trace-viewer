@@ -233,7 +233,7 @@ function testUserControlledValuesAreHtmlEscaped() {
   }];
   assertEscaped(viewer._renderTracesList(), payload, escaped);
 
-  viewer._hass = { language: 'en', states: {} };
+  viewer._hass = { language: 'en', states: {}, user: { is_admin: true } };
   viewer._fetchError = payload;
   viewer.render();
   assertEscaped(viewer.shadowRoot.innerHTML, payload, escaped);

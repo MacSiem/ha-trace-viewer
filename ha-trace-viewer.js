@@ -548,8 +548,9 @@ class HATraceViewer extends HTMLElement {
     this.autoPageSize = this._loadSetting('autoPageSize', 15);
 
     // Trace persistence
-    this._storedTraces = this._loadStoredTraces();
-    this._storedDetails = this._loadStoredDetails();
+    this._storedTraces = {};
+    this._storedDetails = {};
+    this._adminStorageLoaded = false;
 
     // Auto-refresh
     this.relativeTimeUpdater = null;
@@ -806,9 +807,11 @@ class HATraceViewer extends HTMLElement {
       this.classList.toggle('bento-dark', _d);
     } catch (e) {}
 
-    if (hass?.language) this._lang = hass.language.startsWith('pl') ? 'pl' : 'en';    const firstLoad = !this._hass;
+    if (hass?.language) this._lang = hass.language.startsWith('pl') ? 'pl' : 'en';
+    const firstLoad = !this._hass;
+    const roleChanged = !firstLoad && !!this._hass?.user?.is_admin !== !!hass?.user?.is_admin;
     this._hass = hass;
-    if (firstLoad) {
+    if (firstLoad || roleChanged) {
       this._allTraces = [];
       this._traceMap = {};
       this.updateAutomationData();
@@ -819,6 +822,26 @@ class HATraceViewer extends HTMLElement {
 
   async updateAutomationData() {
     if (!this._hass) return;
+    if (!this._hass.user?.is_admin) {
+      this._allTraces = [];
+      this._traceMap = {};
+      this._allFlatTraces = [];
+      this._rawAutomations = [];
+      this.automations = [];
+      this.traces = [];
+      this.traceDetail = null;
+      this._storedTraces = {};
+      this._storedDetails = {};
+      this._adminStorageLoaded = false;
+      this._fetchError = null;
+      this.render();
+      return;
+    }
+    if (!this._adminStorageLoaded) {
+      this._storedTraces = this._loadStoredTraces();
+      this._storedDetails = this._loadStoredDetails();
+      this._adminStorageLoaded = true;
+    }
     let liveTraces = [];
     try {
       liveTraces = await this._hass.callWS({ type: 'trace/list', domain: 'automation' });
@@ -1641,6 +1664,13 @@ class HATraceViewer extends HTMLElement {
 
   render() {
     if (!this._hass) return;
+    if (!this._hass.user?.is_admin) {
+      const message = this._lang === 'pl'
+        ? 'Ślady automatyzacji są dostępne tylko dla administratora Home Assistant.'
+        : 'Automation traces are available only to a Home Assistant administrator.';
+      this.shadowRoot.innerHTML = `${this._css()}<div class="card"><div class="col-main"><div class="topbar"><span class="title">${_esc(this.config.title || this._t('traceViewer'))}</span></div><div role="status" style="padding:16px;color:var(--bento-text-secondary)">${message}</div></div></div>`;
+      return;
+    }
     const selN = this.selectedTraceIds.size;
     this.shadowRoot.innerHTML = `${this._css()}
     <div class="card">
