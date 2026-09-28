@@ -102,10 +102,9 @@ const delay = (ms) => new Promise(r => setTimeout(r, ms));
       else if (t.tag === 'ha-trace-viewer') {
         const footers = el.shadowRoot.querySelectorAll('.donate-section[data-source="own-card"]');
         const coffee = el.shadowRoot.querySelector('a[href="https://buymeacoffee.com/macsiem"]');
-        const paypal = el.shadowRoot.querySelector('a[href="https://www.paypal.com/donate/?hosted_button_id=Y967H4PLRBN8W"]');
         if (footers.length !== 1) problem = `expected one card-owned footer, got ${footers.length}`;
         else if (!coffee || coffee.target !== '_blank' || coffee.rel !== 'noopener noreferrer') problem = 'invalid Buy Me a Coffee link';
-        else if (!paypal || paypal.target !== '_blank' || paypal.rel !== 'noopener noreferrer') problem = 'invalid PayPal link';
+        else if (footers[0].querySelectorAll('a').length !== 1) problem = 'support footer has more than one link';
         else if (el.shadowRoot.innerHTML.includes('foreign-bento')) problem = 'render captured a foreign global Bento stylesheet';
         else if (!el.shadowRoot.innerHTML.includes('HA Tools — Bento Design System v2.0')) problem = 'component-local Bento stylesheet missing';
         else if (window.HAToolsBentoCSS !== ':host{display:none!important}/* foreign-bento */') problem = 'card mutated the pre-seeded global Bento stylesheet';
