@@ -1,3 +1,9 @@
+## 4.1.15 (2026-09-29)
+
+- Keep toolbar actions within narrow Home Assistant Sections cards.
+- Explain administrator-only trace access to household users instead of showing an empty trace list.
+- Replace the prominent support panel with one optional, dismissible link visible only to administrators.
+
 ## 4.1.14 (2026-09-01)
 
 - Fixed Trace Viewer content crossing its Home Assistant Sections row boundary and overlapping the following card.
