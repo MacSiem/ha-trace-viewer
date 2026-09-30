@@ -103,3 +103,9 @@ The optional in-card support link is shown only to administrators. Dismiss it in
 ## License
 
 MIT, see [LICENSE](LICENSE).
+
+## Privacy and data
+
+Automation traces can include entity identifiers, service arguments and household activity. Saved browser data belongs to the current Home Assistant origin and is not a shared backup. Review redacted exports before sharing; keep raw traces private.
+
+See [SECURITY.md](SECURITY.md) for safe vulnerability reporting and [NOTICE](NOTICE) for licensing notices.
