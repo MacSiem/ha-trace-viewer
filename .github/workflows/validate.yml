@@ -45,3 +45,4 @@ jobs:
           node tests/test-trace-viewer-regression.js
           node tests/detail_tabs.test.cjs
           node tests/search_focus.test.cjs
+          node tests/history_refresh.test.cjs

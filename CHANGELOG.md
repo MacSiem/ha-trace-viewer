@@ -1,5 +1,7 @@
 ## 4.1.15 (2026-09-29)
 
+- Refresh selected automation traces while retaining saved history and updating All Traces.
+- Reset automation filters when changing views and explain unavailable trace details.
 - Keep search focus, caret and text selection while typing and refreshing trace data.
 - Render selected trace detail tabs and keep their selected state and keyboard focus consistent.
 - Preserve the execution clock when refreshing relative trace ages; keep missing timestamps as Never.

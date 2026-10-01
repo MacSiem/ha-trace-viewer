@@ -700,7 +700,9 @@ class HATraceViewer extends HTMLElement {
     const key = this._traceKey(itemId);
     if (!key) return null;
     const normalized = traces.map(t => ({ ...t, item_id: t.item_id ?? itemId }));
-    this._traceMap[key] = this._buildTraceBucket(normalized);
+    const merged = new Map((this._traceMap[key]?.traces || []).map(t => [t.run_id, t]));
+    for (const t of normalized) merged.set(t.run_id, t);
+    this._traceMap[key] = this._buildTraceBucket([...merged.values()]);
     for (const t of normalized) {
       this._storedTraces[t.item_id + '::' + t.run_id] = t;
     }
@@ -723,6 +725,7 @@ class HATraceViewer extends HTMLElement {
         traces: 'Traces', traceDetail: 'Trace Detail', timeline: 'Timeline', json: 'JSON',
         changes: 'Changes', config: 'Config', related: 'Related', flowGraph: 'Flow',
         search: 'Search automations...', searchTraces: 'Search traces...',
+        unavailableDetail: 'Trace details are unavailable. Choose a recent trace or refresh the view.',
         noTraces: 'No traces found', noAutomations: 'No automations found',
         clickAutomationToView: 'Select an automation to view traces',
         clickTraceToView: 'Select a trace to view details',
@@ -757,6 +760,7 @@ class HATraceViewer extends HTMLElement {
         traces: '\u015alady', traceDetail: 'Szczeg\u00f3\u0142y', timeline: 'O\u015b Czasowa', json: 'JSON',
         changes: 'Zmiany', config: 'Konfiguracja', related: 'Powi\u0105zane', flowGraph: 'Graf',
         search: 'Wyszukaj automatyzacje...', searchTraces: 'Wyszukaj \u015blady...',
+        unavailableDetail: 'Szczegóły śladu są niedostępne. Wybierz nowszy ślad lub odśwież widok.',
         noTraces: 'Nie znaleziono \u015blad\u00f3w', noAutomations: 'Nie znaleziono automatyzacji',
         clickAutomationToView: 'Wybierz automatyzacj\u0119', clickTraceToView: 'Wybierz \u015blad',
         trigger: 'Wyzwalacz', conditions: 'Warunki', actions: 'Akcje',
@@ -1068,7 +1072,6 @@ class HATraceViewer extends HTMLElement {
     if (this._traceMap[aidKey]) {
       this._applyTraceBucket(this._traceMap[aidKey], auto, entity, aid);
       this.render();
-      return;
     }
 
     try {
@@ -1077,6 +1080,10 @@ class HATraceViewer extends HTMLElement {
       const bucket = this._cacheItemTraces(aid, Array.isArray(liveTraces) ? liveTraces : []);
       if (bucket) {
         auto.triggerCount = bucket.count;
+        this._allFlatTraces = this._allFlatTraces.filter(t => this._traceKey(t.item_id) !== aidKey)
+          .concat(bucket.traces.map(t => this._traceSummary(t, auto, entity, aid)))
+          .sort((a, b) => b.timestamp - a.timestamp);
+        this.applyFiltersAndSort();
         this._applyTraceBucket(bucket, auto, entity, aid);
       }
     } catch (e) {
@@ -1115,7 +1122,7 @@ class HATraceViewer extends HTMLElement {
       } else {
         this.traceDetail = {
           trace, steps: [], changedVars: [], rawData: { error: e.message },
-          configYaml: '', relatedEntities: []
+          configYaml: '', relatedEntities: [], unavailable: true
         };
       }
     }
@@ -1661,6 +1668,7 @@ class HATraceViewer extends HTMLElement {
 
       <!-- Tab content -->
       <div class="det-body">
+        ${this.traceDetail.unavailable ? `<div role="status">${_esc(this._t('unavailableDetail'))}</div>` : ''}
         <div class="tab-pane act" id="tp-${this.detailTab}">
           ${activePane}
         </div>
@@ -1861,7 +1869,7 @@ class HATraceViewer extends HTMLElement {
     // Controls
     $('#viewSel')?.addEventListener('change', e => { this.viewMode = e.target.value; this.searchQuery = ''; this.selectedAutomation = null; this.selectedTrace = null; this.traceDetail = null; this.selectedTraceIds.clear(); this.selectMode = false;
     this.tracePage = 0; this.autoPage = 0;
-    this.tracePageSize = this._loadPageSize(); this._saveCurrentSettings(); this.render(); });
+    this.tracePageSize = this._loadPageSize(); this.applyFiltersAndSort(); this._saveCurrentSettings(); this.render(); });
     $('#grpSel')?.addEventListener('change', e => { this.groupBy = e.target.value; this._saveCurrentSettings(); this.render(); });
     $('#timeSel')?.addEventListener('change', e => { this.timeRange = e.target.value; this.tracePage = 0; this._saveCurrentSettings(); this.selectedAutomation ? this._loadTraces(this.selectedAutomation) : this.render(); });
     $('#cfrom')?.addEventListener('change', e => { this.customTimeFrom = e.target.value; this.selectedAutomation ? this._loadTraces(this.selectedAutomation) : this.render(); });
