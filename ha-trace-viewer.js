@@ -985,7 +985,13 @@ class HATraceViewer extends HTMLElement {
     if (this.relativeTimeUpdater) clearInterval(this.relativeTimeUpdater);
     this.relativeTimeUpdater = setInterval(() => {
       this.shadowRoot?.querySelectorAll('[data-ts]').forEach(el => {
-        el.textContent = this._relTime(new Date(el.dataset.ts));
+        if (!el.dataset.ts) return;
+        const timestamp = new Date(el.dataset.ts);
+        if (!Number.isFinite(timestamp.getTime())) return;
+        const relative = this._relTime(timestamp);
+        el.textContent = el.classList.contains('tr-time')
+          ? `${this._fmtTimeShort(timestamp)} · ${relative}`
+          : relative;
       });
     }, 30000);
   }
@@ -1907,10 +1913,8 @@ class HATraceViewer extends HTMLElement {
     // Detail tabs
     $$('.dtab').forEach(tab => tab.addEventListener('click', () => {
       this.detailTab = tab.dataset.dtab;
-      $$('.dtab').forEach(t => t.classList.remove('act'));
-      tab.classList.add('act');
-      $$('.tab-pane').forEach(p => p.classList.remove('act'));
-      $(`#tp-${this.detailTab}`)?.classList.add('act');
+      this.render();
+      this.shadowRoot.querySelector(`[data-dtab="${this.detailTab}"]`)?.focus({ preventScroll: true });
     }));
 
     // Copy JSON

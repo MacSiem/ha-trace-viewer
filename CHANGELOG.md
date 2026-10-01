@@ -1,5 +1,7 @@
 ## 4.1.15 (2026-09-29)
 
+- Render selected trace detail tabs and keep their selected state and keyboard focus consistent.
+- Preserve the execution clock when refreshing relative trace ages; keep missing timestamps as Never.
 - Count only persisted traces in the saved badge, including retention limits and failed browser-storage writes.
 - Keep toolbar actions within narrow Home Assistant Sections cards.
 - Explain administrator-only trace access to household users instead of showing an empty trace list.
