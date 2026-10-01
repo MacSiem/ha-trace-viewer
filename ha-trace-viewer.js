@@ -1080,6 +1080,7 @@ class HATraceViewer extends HTMLElement {
       const bucket = this._cacheItemTraces(aid, Array.isArray(liveTraces) ? liveTraces : []);
       if (bucket) {
         auto.triggerCount = bucket.count;
+        if (bucket.lastRun && (!auto.lastTriggered || bucket.lastRun > auto.lastTriggered)) auto.lastTriggered = bucket.lastRun;
         this._allFlatTraces = this._allFlatTraces.filter(t => this._traceKey(t.item_id) !== aidKey)
           .concat(bucket.traces.map(t => this._traceSummary(t, auto, entity, aid)))
           .sort((a, b) => b.timestamp - a.timestamp);
