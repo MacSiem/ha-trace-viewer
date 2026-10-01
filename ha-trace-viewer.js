@@ -1679,6 +1679,11 @@ class HATraceViewer extends HTMLElement {
       this.shadowRoot.innerHTML = `${this._css()}<div class="card"><div class="col-main"><div class="topbar"><span class="title">${_esc(this.config.title || this._t('traceViewer'))}</span></div><div role="status" style="padding:16px;color:var(--bento-text-secondary)">${message}</div></div></div>`;
       return;
     }
+    const activeSearch = this.shadowRoot.activeElement;
+    const searchSelection = activeSearch && ['autoSearch', 'trSearch'].includes(activeSearch.id)
+      ? { id: activeSearch.id, start: activeSearch.selectionStart, end: activeSearch.selectionEnd,
+          direction: activeSearch.selectionDirection }
+      : null;
     const selN = this.selectedTraceIds.size;
     this.shadowRoot.innerHTML = `${this._css()}
     <div class="card">
@@ -1769,6 +1774,11 @@ class HATraceViewer extends HTMLElement {
     this._bindEvents();
     // Apply compact classes immediately after render based on current width
     this._applyCompactClasses();
+    if (searchSelection) {
+      const input = this.shadowRoot.getElementById(searchSelection.id);
+      input?.focus({ preventScroll: true });
+      input?.setSelectionRange(searchSelection.start, searchSelection.end, searchSelection.direction);
+    }
   }
 
   _applyCompactClasses() {

@@ -1,5 +1,6 @@
 ## 4.1.15 (2026-09-29)
 
+- Keep search focus, caret and text selection while typing and refreshing trace data.
 - Render selected trace detail tabs and keep their selected state and keyboard focus consistent.
 - Preserve the execution clock when refreshing relative trace ages; keep missing timestamps as Never.
 - Count only persisted traces in the saved badge, including retention limits and failed browser-storage writes.
