@@ -160,7 +160,7 @@ async function testYamlAutomationFetchesPerItemTracesAndClearsStaleState() {
   assert.strictEqual(viewer._traceMap.domofon_sync_trybu.count, 1);
 }
 
-async function testNumericAutomationUsesCachedTraceBucket() {
+async function testNumericAutomationRetainsCachedTraceBucketAfterRefreshing() {
   const HATraceViewer = loadViewerClass();
   const viewer = new HATraceViewer();
   const calls = [];
@@ -199,7 +199,7 @@ async function testNumericAutomationUsesCachedTraceBucket() {
 
   await viewer._loadTraces('automation.ui_created');
 
-  assert.strictEqual(calls.length, 0);
+  assert.strictEqual(calls.length, 1);
   assert.strictEqual(viewer.traces.length, 1);
   assert.strictEqual(viewer.traces[0].id, 'run-numeric-1');
   assert.strictEqual(viewer.traces[0].item_id, '1772654249135');
@@ -307,7 +307,7 @@ function testTimeRefreshKeepsTraceClockAndNeverLabel() {
 
 (async () => {
   await testYamlAutomationFetchesPerItemTracesAndClearsStaleState();
-  await testNumericAutomationUsesCachedTraceBucket();
+  await testNumericAutomationRetainsCachedTraceBucketAfterRefreshing();
   testUserControlledValuesAreHtmlEscaped();
   testSavedCountMatchesDataThatSurvivesReload();
   testFailedSaveDoesNotClaimAdditionalSavedTraces();
