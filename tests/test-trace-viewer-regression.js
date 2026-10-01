@@ -2,7 +2,7 @@ const assert = require('assert');
 const fs = require('fs');
 const vm = require('vm');
 
-function loadViewerClass() {
+function loadViewerClass(saveOptions = {}) {
   const registry = new Map();
   const storage = new Map();
 
@@ -63,7 +63,10 @@ function loadViewerClass() {
     navigator: { language: 'en-US' },
     localStorage: {
       getItem: key => storage.has(key) ? storage.get(key) : null,
-      setItem: (key, value) => storage.set(key, String(value)),
+      setItem: (key, value) => {
+        if (saveOptions.failSave) throw new Error('storage quota exceeded');
+        storage.set(key, String(value));
+      },
       removeItem: key => storage.delete(key),
     },
     window: windowStub,
@@ -244,9 +247,37 @@ function testUserControlledValuesAreHtmlEscaped() {
   assertEscaped(viewer.shadowRoot.innerHTML, payload, escaped);
 }
 
+function testSavedCountMatchesDataThatSurvivesReload() {
+  const HATraceViewer = loadViewerClass();
+  const viewer = new HATraceViewer();
+  const traces = Array.from({ length: 2001 }, (_, i) => ({
+    item_id: 'qa_automation', run_id: String(i),
+    timestamp: { start: new Date(Date.UTC(2026, 8, 30, 0, 0, i)).toISOString() },
+  }));
+  viewer._mergeAndStoreTraces(traces);
+  const reloaded = new HATraceViewer();
+  reloaded._storedTraces = reloaded._loadStoredTraces();
+  assert.strictEqual(Object.keys(reloaded._storedTraces).length, 2000);
+  assert.strictEqual(viewer._getStoredTraceCount(), reloaded._getStoredTraceCount(),
+    'saved badge must count persisted traces, including after retention trimming');
+}
+
+function testFailedSaveDoesNotClaimAdditionalSavedTraces() {
+  const saveOptions = {};
+  const HATraceViewer = loadViewerClass(saveOptions);
+  const viewer = new HATraceViewer();
+  viewer._mergeAndStoreTraces([{ item_id: 'qa', run_id: 'saved', timestamp: { start: '2026-09-30T00:00:00Z' } }]);
+  saveOptions.failSave = true;
+  viewer._mergeAndStoreTraces([{ item_id: 'qa', run_id: 'unsaved', timestamp: { start: '2026-09-30T00:01:00Z' } }]);
+  assert.strictEqual(viewer._getStoredTraceCount(), 1,
+    'failed storage write must retain the previous saved count');
+}
+
 (async () => {
   await testYamlAutomationFetchesPerItemTracesAndClearsStaleState();
   await testNumericAutomationUsesCachedTraceBucket();
   testUserControlledValuesAreHtmlEscaped();
+  testSavedCountMatchesDataThatSurvivesReload();
+  testFailedSaveDoesNotClaimAdditionalSavedTraces();
   console.log('trace viewer regression tests passed');
 })();
