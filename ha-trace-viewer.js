@@ -2326,9 +2326,9 @@ class HATraceViewer extends HTMLElement {
   display: flex; align-items: center; justify-content: center; font-size: 11px; flex-shrink: 0;
   font-weight: 600;
 }
-.tl-title { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.tl-title { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .tl-cat { font-size: 10px; font-weight: 700; color: var(--bento-primary); text-transform: uppercase; letter-spacing: 0.04em; }
-.tl-desc { font-size: 13px; font-weight: 500; color: var(--bento-text); }
+.tl-desc { font-size: 13px; font-weight: 500; color: var(--bento-text); overflow-wrap: anywhere; }
 .tl-dur { font-size: 11px; color: var(--bento-text-secondary); white-space: nowrap; font-weight: 600; }
 .tl-err {
   margin-top: 8px; padding: 8px 12px; background: rgba(239, 68, 68, 0.08);

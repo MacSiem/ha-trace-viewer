@@ -1,5 +1,6 @@
 ## 4.1.15 (2026-09-29)
 
+- Wrap long timeline action paths within narrow Sections cards.
 - Refresh selected automation traces while retaining saved history, updating All Traces and the automation last-run time.
 - Reset automation filters when changing views and explain unavailable trace details.
 - Keep search focus, caret and text selection while typing and refreshing trace data.
