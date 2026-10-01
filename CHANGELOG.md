@@ -1,5 +1,6 @@
 ## 4.1.15 (2026-09-29)
 
+- Count only persisted traces in the saved badge, including retention limits and failed browser-storage writes.
 - Keep toolbar actions within narrow Home Assistant Sections cards.
 - Explain administrator-only trace access to household users instead of showing an empty trace list.
 - Replace the prominent support panel with one optional, dismissible link visible only to administrators.

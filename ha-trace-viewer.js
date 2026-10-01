@@ -709,7 +709,9 @@ class HATraceViewer extends HTMLElement {
   }
 
   _getStoredTraceCount() {
-    return Object.keys(this._storedTraces).length;
+    // The live cache can exceed retention, or a storage write can fail.
+    // Count the persisted snapshot that is available after reloading.
+    return Object.keys(this._loadStoredTraces()).length;
   }
 
   // ============================================================
