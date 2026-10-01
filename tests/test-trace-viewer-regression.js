@@ -58,7 +58,10 @@ function loadViewerClass(saveOptions = {}) {
     console,
     setTimeout: () => 0,
     clearTimeout: () => {},
-    setInterval: () => 0,
+    setInterval: (callback, delay) => {
+      if (saveOptions.onInterval) saveOptions.onInterval(callback, delay);
+      return 0;
+    },
     clearInterval: () => {},
     navigator: { language: 'en-US' },
     localStorage: {
@@ -273,11 +276,41 @@ function testFailedSaveDoesNotClaimAdditionalSavedTraces() {
     'failed storage write must retain the previous saved count');
 }
 
+function testTimeRefreshKeepsTraceClockAndNeverLabel() {
+  const { JSDOM } = require('jsdom');
+  let tick;
+  const Viewer = loadViewerClass({ onInterval: callback => { tick = callback; } });
+  const viewer = new Viewer();
+  viewer._hass = { language: 'en' };
+  const document = new JSDOM('<div></div>').window.document;
+  const at = new Date(Date.now() - 120000);
+  const clock = viewer._fmtTimeShort(at);
+  const trace = document.createElement('div');
+  trace.className = 'tr-time';
+  trace.dataset.ts = at.toISOString();
+  trace.textContent = `${clock} · ${viewer._relTime(at)}`;
+  const automation = document.createElement('span');
+  automation.dataset.ts = at.toISOString();
+  automation.textContent = viewer._relTime(at);
+  const never = document.createElement('span');
+  never.dataset.ts = '';
+  never.textContent = 'Never';
+  viewer.shadowRoot.querySelectorAll = () => [trace, automation, never];
+  viewer._startTimer();
+  tick();
+  assert.deepStrictEqual(
+    [trace.textContent, automation.textContent, never.textContent],
+    [`${clock} · ${viewer._relTime(at)}`, viewer._relTime(at), 'Never'],
+    'timer must retain trace clock, relative-only automation labels and missing timestamps',
+  );
+}
+
 (async () => {
   await testYamlAutomationFetchesPerItemTracesAndClearsStaleState();
   await testNumericAutomationUsesCachedTraceBucket();
   testUserControlledValuesAreHtmlEscaped();
   testSavedCountMatchesDataThatSurvivesReload();
   testFailedSaveDoesNotClaimAdditionalSavedTraces();
+  testTimeRefreshKeepsTraceClockAndNeverLabel();
   console.log('trace viewer regression tests passed');
 })();
