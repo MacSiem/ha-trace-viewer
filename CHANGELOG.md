@@ -1,3 +1,18 @@
+## 4.1.15 (2026-09-29)
+
+- Refresh administrator controls and the household permission message after ordinary Home Assistant language changes without rereading trace history. Preserve active search text, focus and selection; same-language state updates retain the form DOM.
+
+- Wrap long timeline action paths within narrow Sections cards.
+- Refresh selected automation traces while retaining saved history, updating All Traces and the automation last-run time.
+- Reset automation filters when changing views and explain unavailable trace details.
+- Keep search focus, caret and text selection while typing and refreshing trace data.
+- Render selected trace detail tabs and keep their selected state and keyboard focus consistent.
+- Preserve the execution clock when refreshing relative trace ages; keep missing timestamps as Never.
+- Count only persisted traces in the saved badge, including retention limits and failed browser-storage writes.
+- Keep toolbar actions within narrow Home Assistant Sections cards.
+- Explain administrator-only trace access to household users instead of showing an empty trace list.
+- Replace the prominent support panel with one optional, dismissible link visible only to administrators.
+
 ## 4.1.14 (2026-09-01)
 
 - Fixed Trace Viewer content crossing its Home Assistant Sections row boundary and overlapping the following card.

@@ -42,9 +42,9 @@ no extra integration:
 |---|---|
 | ![Traces, light theme](docs/screenshots/card-traces-light.png) | ![Traces, dark theme](docs/screenshots/card-traces-dark.png) |
 
-*An automation selected: run stats (total, success rate, average duration,
-errors) and the trace list. Dark mode follows your Home Assistant theme
-automatically.*
+*A synthetic automation selected: run stats (total, success rate, average
+duration, errors) and trace list. No household trace is shown. Dark mode
+follows your Home Assistant theme.*
 
 ## Installation
 
@@ -98,6 +98,14 @@ See [CHANGELOG.md](CHANGELOG.md).
 - [Buy Me a Coffee](https://buymeacoffee.com/macsiem)
 - [PayPal](https://www.paypal.com/donate/?hosted_button_id=Y967H4PLRBN8W)
 
+The optional in-card support link is shown only to administrators. Dismiss it in the card or set `show_support: false` in the card configuration.
+
 ## License
 
 MIT, see [LICENSE](LICENSE).
+
+## Privacy and data
+
+Automation traces can include entity identifiers, service arguments and household activity. Saved browser data belongs to the current Home Assistant origin and is not a shared backup. Review redacted exports before sharing; keep raw traces private.
+
+See [SECURITY.md](SECURITY.md) for safe vulnerability reporting and [NOTICE](NOTICE) for licensing notices.

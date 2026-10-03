@@ -40,3 +40,10 @@ jobs:
           npm init -y >/dev/null 2>&1
           npm ci >/dev/null 2>&1
           node .github/smoke.cjs
+      - name: Trace Viewer regression tests
+        run: |
+          node tests/test-trace-viewer-regression.js
+          node tests/detail_tabs.test.cjs
+          node tests/search_focus.test.cjs
+          node tests/history_refresh.test.cjs
+          node --test tests/locale_lifecycle.test.cjs

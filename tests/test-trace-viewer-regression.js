@@ -2,7 +2,7 @@ const assert = require('assert');
 const fs = require('fs');
 const vm = require('vm');
 
-function loadViewerClass() {
+function loadViewerClass(saveOptions = {}) {
   const registry = new Map();
   const storage = new Map();
 
@@ -58,12 +58,18 @@ function loadViewerClass() {
     console,
     setTimeout: () => 0,
     clearTimeout: () => {},
-    setInterval: () => 0,
+    setInterval: (callback, delay) => {
+      if (saveOptions.onInterval) saveOptions.onInterval(callback, delay);
+      return 0;
+    },
     clearInterval: () => {},
     navigator: { language: 'en-US' },
     localStorage: {
       getItem: key => storage.has(key) ? storage.get(key) : null,
-      setItem: (key, value) => storage.set(key, String(value)),
+      setItem: (key, value) => {
+        if (saveOptions.failSave) throw new Error('storage quota exceeded');
+        storage.set(key, String(value));
+      },
       removeItem: key => storage.delete(key),
     },
     window: windowStub,
@@ -154,7 +160,7 @@ async function testYamlAutomationFetchesPerItemTracesAndClearsStaleState() {
   assert.strictEqual(viewer._traceMap.domofon_sync_trybu.count, 1);
 }
 
-async function testNumericAutomationUsesCachedTraceBucket() {
+async function testNumericAutomationRetainsCachedTraceBucketAfterRefreshing() {
   const HATraceViewer = loadViewerClass();
   const viewer = new HATraceViewer();
   const calls = [];
@@ -193,7 +199,7 @@ async function testNumericAutomationUsesCachedTraceBucket() {
 
   await viewer._loadTraces('automation.ui_created');
 
-  assert.strictEqual(calls.length, 0);
+  assert.strictEqual(calls.length, 1);
   assert.strictEqual(viewer.traces.length, 1);
   assert.strictEqual(viewer.traces[0].id, 'run-numeric-1');
   assert.strictEqual(viewer.traces[0].item_id, '1772654249135');
@@ -233,7 +239,7 @@ function testUserControlledValuesAreHtmlEscaped() {
   }];
   assertEscaped(viewer._renderTracesList(), payload, escaped);
 
-  viewer._hass = { language: 'en', states: {} };
+  viewer._hass = { language: 'en', states: {}, user: { is_admin: true } };
   viewer._fetchError = payload;
   viewer.render();
   assertEscaped(viewer.shadowRoot.innerHTML, payload, escaped);
@@ -244,9 +250,67 @@ function testUserControlledValuesAreHtmlEscaped() {
   assertEscaped(viewer.shadowRoot.innerHTML, payload, escaped);
 }
 
+function testSavedCountMatchesDataThatSurvivesReload() {
+  const HATraceViewer = loadViewerClass();
+  const viewer = new HATraceViewer();
+  const traces = Array.from({ length: 2001 }, (_, i) => ({
+    item_id: 'qa_automation', run_id: String(i),
+    timestamp: { start: new Date(Date.UTC(2026, 8, 30, 0, 0, i)).toISOString() },
+  }));
+  viewer._mergeAndStoreTraces(traces);
+  const reloaded = new HATraceViewer();
+  reloaded._storedTraces = reloaded._loadStoredTraces();
+  assert.strictEqual(Object.keys(reloaded._storedTraces).length, 2000);
+  assert.strictEqual(viewer._getStoredTraceCount(), reloaded._getStoredTraceCount(),
+    'saved badge must count persisted traces, including after retention trimming');
+}
+
+function testFailedSaveDoesNotClaimAdditionalSavedTraces() {
+  const saveOptions = {};
+  const HATraceViewer = loadViewerClass(saveOptions);
+  const viewer = new HATraceViewer();
+  viewer._mergeAndStoreTraces([{ item_id: 'qa', run_id: 'saved', timestamp: { start: '2026-09-30T00:00:00Z' } }]);
+  saveOptions.failSave = true;
+  viewer._mergeAndStoreTraces([{ item_id: 'qa', run_id: 'unsaved', timestamp: { start: '2026-09-30T00:01:00Z' } }]);
+  assert.strictEqual(viewer._getStoredTraceCount(), 1,
+    'failed storage write must retain the previous saved count');
+}
+
+function testTimeRefreshKeepsTraceClockAndNeverLabel() {
+  const { JSDOM } = require('jsdom');
+  let tick;
+  const Viewer = loadViewerClass({ onInterval: callback => { tick = callback; } });
+  const viewer = new Viewer();
+  viewer._hass = { language: 'en' };
+  const document = new JSDOM('<div></div>').window.document;
+  const at = new Date(Date.now() - 120000);
+  const clock = viewer._fmtTimeShort(at);
+  const trace = document.createElement('div');
+  trace.className = 'tr-time';
+  trace.dataset.ts = at.toISOString();
+  trace.textContent = `${clock} · ${viewer._relTime(at)}`;
+  const automation = document.createElement('span');
+  automation.dataset.ts = at.toISOString();
+  automation.textContent = viewer._relTime(at);
+  const never = document.createElement('span');
+  never.dataset.ts = '';
+  never.textContent = 'Never';
+  viewer.shadowRoot.querySelectorAll = () => [trace, automation, never];
+  viewer._startTimer();
+  tick();
+  assert.deepStrictEqual(
+    [trace.textContent, automation.textContent, never.textContent],
+    [`${clock} · ${viewer._relTime(at)}`, viewer._relTime(at), 'Never'],
+    'timer must retain trace clock, relative-only automation labels and missing timestamps',
+  );
+}
+
 (async () => {
   await testYamlAutomationFetchesPerItemTracesAndClearsStaleState();
-  await testNumericAutomationUsesCachedTraceBucket();
+  await testNumericAutomationRetainsCachedTraceBucketAfterRefreshing();
   testUserControlledValuesAreHtmlEscaped();
+  testSavedCountMatchesDataThatSurvivesReload();
+  testFailedSaveDoesNotClaimAdditionalSavedTraces();
+  testTimeRefreshKeepsTraceClockAndNeverLabel();
   console.log('trace viewer regression tests passed');
 })();

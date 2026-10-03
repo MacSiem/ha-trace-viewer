@@ -89,6 +89,7 @@
   card.setConfig({ type: 'custom:ha-trace-viewer' });
   card.hass = hass;
   setTimeout(() => { card.hass = { ...hass }; }, 400);
+  setTimeout(() => { card.onAutoClick('automation.door_notify'); }, 650);
   const scrub = () => { try { card.shadowRoot && card.shadowRoot.querySelectorAll('#tip-banner, [class*="banner"], .donate-section').forEach(n => n.remove()); } catch (e) {} };
   setInterval(scrub, 150);
   setTimeout(() => { scrub(); document.title = 'TV-READY'; }, 1300);

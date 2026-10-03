@@ -1,4 +1,4 @@
-/* HA Tools split — ha-trace-viewer v4.1.14 (2026-09-01) — single-tool standalone repo */
+/* HA Tools split — ha-trace-viewer v4.1.15 (2026-09-29) — single-tool standalone repo */
 (function() {
 'use strict';
 
@@ -548,8 +548,9 @@ class HATraceViewer extends HTMLElement {
     this.autoPageSize = this._loadSetting('autoPageSize', 15);
 
     // Trace persistence
-    this._storedTraces = this._loadStoredTraces();
-    this._storedDetails = this._loadStoredDetails();
+    this._storedTraces = {};
+    this._storedDetails = {};
+    this._adminStorageLoaded = false;
 
     // Auto-refresh
     this.relativeTimeUpdater = null;
@@ -699,7 +700,9 @@ class HATraceViewer extends HTMLElement {
     const key = this._traceKey(itemId);
     if (!key) return null;
     const normalized = traces.map(t => ({ ...t, item_id: t.item_id ?? itemId }));
-    this._traceMap[key] = this._buildTraceBucket(normalized);
+    const merged = new Map((this._traceMap[key]?.traces || []).map(t => [t.run_id, t]));
+    for (const t of normalized) merged.set(t.run_id, t);
+    this._traceMap[key] = this._buildTraceBucket([...merged.values()]);
     for (const t of normalized) {
       this._storedTraces[t.item_id + '::' + t.run_id] = t;
     }
@@ -708,7 +711,9 @@ class HATraceViewer extends HTMLElement {
   }
 
   _getStoredTraceCount() {
-    return Object.keys(this._storedTraces).length;
+    // The live cache can exceed retention, or a storage write can fail.
+    // Count the persisted snapshot that is available after reloading.
+    return Object.keys(this._loadStoredTraces()).length;
   }
 
   // ============================================================
@@ -720,6 +725,7 @@ class HATraceViewer extends HTMLElement {
         traces: 'Traces', traceDetail: 'Trace Detail', timeline: 'Timeline', json: 'JSON',
         changes: 'Changes', config: 'Config', related: 'Related', flowGraph: 'Flow',
         search: 'Search automations...', searchTraces: 'Search traces...',
+        unavailableDetail: 'Trace details are unavailable. Choose a recent trace or refresh the view.',
         noTraces: 'No traces found', noAutomations: 'No automations found',
         clickAutomationToView: 'Select an automation to view traces',
         clickTraceToView: 'Select a trace to view details',
@@ -754,6 +760,7 @@ class HATraceViewer extends HTMLElement {
         traces: '\u015alady', traceDetail: 'Szczeg\u00f3\u0142y', timeline: 'O\u015b Czasowa', json: 'JSON',
         changes: 'Zmiany', config: 'Konfiguracja', related: 'Powi\u0105zane', flowGraph: 'Graf',
         search: 'Wyszukaj automatyzacje...', searchTraces: 'Wyszukaj \u015blady...',
+        unavailableDetail: 'Szczegóły śladu są niedostępne. Wybierz nowszy ślad lub odśwież widok.',
         noTraces: 'Nie znaleziono \u015blad\u00f3w', noAutomations: 'Nie znaleziono automatyzacji',
         clickAutomationToView: 'Wybierz automatyzacj\u0119', clickTraceToView: 'Wybierz \u015blad',
         trigger: 'Wyzwalacz', conditions: 'Warunki', actions: 'Akcje',
@@ -791,9 +798,10 @@ class HATraceViewer extends HTMLElement {
     return (T[lang] || T['en'])[key] || T['en'][key] || key;
   }
 
-  setConfig(config) { this.config = { title: 'Trace Viewer', ...config }; }
+  setConfig(config) { this.config = { title: 'Trace Viewer', ...config }; if (this._hass) this.render(); }
 
   set hass(hass) {
+    const previousLanguage = this._lang;
     try {
       var _bg = (getComputedStyle(this).getPropertyValue('--card-background-color') || getComputedStyle(this).getPropertyValue('--primary-background-color') || '').trim();
       var _d = false;
@@ -806,19 +814,41 @@ class HATraceViewer extends HTMLElement {
       this.classList.toggle('bento-dark', _d);
     } catch (e) {}
 
-    if (hass?.language) this._lang = hass.language.startsWith('pl') ? 'pl' : 'en';    const firstLoad = !this._hass;
+    if (hass?.language) this._lang = hass.language.startsWith('pl') ? 'pl' : 'en';
+    const firstLoad = !this._hass;
+    const roleChanged = !firstLoad && !!this._hass?.user?.is_admin !== !!hass?.user?.is_admin;
     this._hass = hass;
-    if (firstLoad) {
+    if (firstLoad || roleChanged) {
       this._allTraces = [];
       this._traceMap = {};
       this.updateAutomationData();
-    }
+    } else if (hass && previousLanguage !== this._lang) this.render();
   }
 
   // ============================================================
 
   async updateAutomationData() {
     if (!this._hass) return;
+    if (!this._hass.user?.is_admin) {
+      this._allTraces = [];
+      this._traceMap = {};
+      this._allFlatTraces = [];
+      this._rawAutomations = [];
+      this.automations = [];
+      this.traces = [];
+      this.traceDetail = null;
+      this._storedTraces = {};
+      this._storedDetails = {};
+      this._adminStorageLoaded = false;
+      this._fetchError = null;
+      this.render();
+      return;
+    }
+    if (!this._adminStorageLoaded) {
+      this._storedTraces = this._loadStoredTraces();
+      this._storedDetails = this._loadStoredDetails();
+      this._adminStorageLoaded = true;
+    }
     let liveTraces = [];
     try {
       liveTraces = await this._hass.callWS({ type: 'trace/list', domain: 'automation' });
@@ -960,7 +990,13 @@ class HATraceViewer extends HTMLElement {
     if (this.relativeTimeUpdater) clearInterval(this.relativeTimeUpdater);
     this.relativeTimeUpdater = setInterval(() => {
       this.shadowRoot?.querySelectorAll('[data-ts]').forEach(el => {
-        el.textContent = this._relTime(new Date(el.dataset.ts));
+        if (!el.dataset.ts) return;
+        const timestamp = new Date(el.dataset.ts);
+        if (!Number.isFinite(timestamp.getTime())) return;
+        const relative = this._relTime(timestamp);
+        el.textContent = el.classList.contains('tr-time')
+          ? `${this._fmtTimeShort(timestamp)} · ${relative}`
+          : relative;
       });
     }, 30000);
   }
@@ -1037,7 +1073,6 @@ class HATraceViewer extends HTMLElement {
     if (this._traceMap[aidKey]) {
       this._applyTraceBucket(this._traceMap[aidKey], auto, entity, aid);
       this.render();
-      return;
     }
 
     try {
@@ -1046,6 +1081,11 @@ class HATraceViewer extends HTMLElement {
       const bucket = this._cacheItemTraces(aid, Array.isArray(liveTraces) ? liveTraces : []);
       if (bucket) {
         auto.triggerCount = bucket.count;
+        if (bucket.lastRun && (!auto.lastTriggered || bucket.lastRun > auto.lastTriggered)) auto.lastTriggered = bucket.lastRun;
+        this._allFlatTraces = this._allFlatTraces.filter(t => this._traceKey(t.item_id) !== aidKey)
+          .concat(bucket.traces.map(t => this._traceSummary(t, auto, entity, aid)))
+          .sort((a, b) => b.timestamp - a.timestamp);
+        this.applyFiltersAndSort();
         this._applyTraceBucket(bucket, auto, entity, aid);
       }
     } catch (e) {
@@ -1084,7 +1124,7 @@ class HATraceViewer extends HTMLElement {
       } else {
         this.traceDetail = {
           trace, steps: [], changedVars: [], rawData: { error: e.message },
-          configYaml: '', relatedEntities: []
+          configYaml: '', relatedEntities: [], unavailable: true
         };
       }
     }
@@ -1630,6 +1670,7 @@ class HATraceViewer extends HTMLElement {
 
       <!-- Tab content -->
       <div class="det-body">
+        ${this.traceDetail.unavailable ? `<div role="status">${_esc(this._t('unavailableDetail'))}</div>` : ''}
         <div class="tab-pane act" id="tp-${this.detailTab}">
           ${activePane}
         </div>
@@ -1641,6 +1682,18 @@ class HATraceViewer extends HTMLElement {
 
   render() {
     if (!this._hass) return;
+    if (!this._hass.user?.is_admin) {
+      const message = this._lang === 'pl'
+        ? 'Ślady automatyzacji są dostępne tylko dla administratora Home Assistant.'
+        : 'Automation traces are available only to a Home Assistant administrator.';
+      this.shadowRoot.innerHTML = `${this._css()}<div class="card"><div class="col-main"><div class="topbar"><span class="title">${_esc(this.config.title || this._t('traceViewer'))}</span></div><div role="status" style="padding:16px;color:var(--bento-text-secondary)">${message}</div></div></div>`;
+      return;
+    }
+    const activeSearch = this.shadowRoot.activeElement;
+    const searchSelection = activeSearch && ['autoSearch', 'trSearch'].includes(activeSearch.id)
+      ? { id: activeSearch.id, start: activeSearch.selectionStart, end: activeSearch.selectionEnd,
+          direction: activeSearch.selectionDirection }
+      : null;
     const selN = this.selectedTraceIds.size;
     this.shadowRoot.innerHTML = `${this._css()}
     <div class="card">
@@ -1725,21 +1778,17 @@ class HATraceViewer extends HTMLElement {
             ${this._renderDetail()}
           </div>
         </div>
-        <div class="donate-section" data-source="own-card">
-          <div class="donate-text">
-            <h3>❤️ Support HA Tools Development</h3>
-            <p>If this tool makes your Home Assistant life easier, consider supporting the project. Every coffee motivates further development!</p>
-          </div>
-          <div class="donate-buttons">
-            <a class="donate-btn coffee" href="https://buymeacoffee.com/macsiem" target="_blank" rel="noopener noreferrer">☕ Buy Me a Coffee</a>
-            <a class="donate-btn paypal" href="https://www.paypal.com/donate/?hosted_button_id=Y967H4PLRBN8W" target="_blank" rel="noopener noreferrer">💳 PayPal</a>
-          </div>
-        </div>
+        ${this._hass?.user?.is_admin && this.config?.show_support !== false && !this._supportDismissed() ? `<div class="donate-section" data-source="own-card" style="margin:8px 0 0;padding:4px 0;background:none;border:0;box-shadow:none;min-height:0;display:flex;gap:8px;align-items:center;flex-wrap:wrap;flex-direction:row;justify-content:flex-start;text-align:left"><a href="https://buymeacoffee.com/macsiem" target="_blank" rel="noopener noreferrer" style="font-size:11px;color:var(--secondary-text-color,#64748b);font-weight:400;text-decoration:underline">Optional support for HA Tools</a><button type="button" class="support-dismiss" aria-label="Dismiss support link" style="margin-left:auto;padding:2px 6px;min-height:0;line-height:1;border:0;background:none;color:var(--secondary-text-color,#64748b);cursor:pointer">×</button></div>` : ''}
       </div>
     </div>`;
     this._bindEvents();
     // Apply compact classes immediately after render based on current width
     this._applyCompactClasses();
+    if (searchSelection) {
+      const input = this.shadowRoot.getElementById(searchSelection.id);
+      input?.focus({ preventScroll: true });
+      input?.setSelectionRange(searchSelection.start, searchSelection.end, searchSelection.direction);
+    }
   }
 
   _applyCompactClasses() {
@@ -1754,7 +1803,15 @@ class HATraceViewer extends HTMLElement {
 
   // ============================================================
 
+  _supportDismissed() {
+    try { return localStorage.getItem('ha-trace-viewer-support-dismissed') === '1'; } catch (_) { return false; }
+  }
+
   _bindEvents() {
+    this.shadowRoot.querySelector('.support-dismiss')?.addEventListener('click', () => {
+      try { localStorage.setItem('ha-trace-viewer-support-dismissed', '1'); } catch (_) {}
+      this.shadowRoot.querySelector('.donate-section[data-source="own-card"]')?.remove();
+    });
     const $ = s => this.shadowRoot.querySelector(s);
     const $$ = s => this.shadowRoot.querySelectorAll(s);
 
@@ -1814,7 +1871,7 @@ class HATraceViewer extends HTMLElement {
     // Controls
     $('#viewSel')?.addEventListener('change', e => { this.viewMode = e.target.value; this.searchQuery = ''; this.selectedAutomation = null; this.selectedTrace = null; this.traceDetail = null; this.selectedTraceIds.clear(); this.selectMode = false;
     this.tracePage = 0; this.autoPage = 0;
-    this.tracePageSize = this._loadPageSize(); this._saveCurrentSettings(); this.render(); });
+    this.tracePageSize = this._loadPageSize(); this.applyFiltersAndSort(); this._saveCurrentSettings(); this.render(); });
     $('#grpSel')?.addEventListener('change', e => { this.groupBy = e.target.value; this._saveCurrentSettings(); this.render(); });
     $('#timeSel')?.addEventListener('change', e => { this.timeRange = e.target.value; this.tracePage = 0; this._saveCurrentSettings(); this.selectedAutomation ? this._loadTraces(this.selectedAutomation) : this.render(); });
     $('#cfrom')?.addEventListener('change', e => { this.customTimeFrom = e.target.value; this.selectedAutomation ? this._loadTraces(this.selectedAutomation) : this.render(); });
@@ -1876,10 +1933,8 @@ class HATraceViewer extends HTMLElement {
     // Detail tabs
     $$('.dtab').forEach(tab => tab.addEventListener('click', () => {
       this.detailTab = tab.dataset.dtab;
-      $$('.dtab').forEach(t => t.classList.remove('act'));
-      tab.classList.add('act');
-      $$('.tab-pane').forEach(p => p.classList.remove('act'));
-      $(`#tp-${this.detailTab}`)?.classList.add('act');
+      this.render();
+      this.shadowRoot.querySelector(`[data-dtab="${this.detailTab}"]`)?.focus({ preventScroll: true });
     }));
 
     // Copy JSON
@@ -1899,7 +1954,7 @@ class HATraceViewer extends HTMLElement {
 
 /* Donation footer — diamond top */
 .donate-section {  margin: 24px 0 4px; padding: 20px 24px; position: relative; overflow: hidden;  background: linear-gradient(135deg, rgba(99,102,241,0.06), rgba(236,72,153,0.06));  border: 1px solid rgba(99,102,241,0.18); border-radius: var(--bento-radius-md, 18px);  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 18px;  font-family: 'Inter', -apple-system, sans-serif;}
-.donate-section::before {  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;  background: linear-gradient(90deg, #6366f1, #8b5cf6, #ec4899);}
+.donate-section:not([data-source="own-card"])::before {  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;  background: linear-gradient(90deg, #6366f1, #8b5cf6, #ec4899);}
 .donate-section .donate-text { flex: 1; min-width: 240px; }
 .donate-section h3 {  margin: 0 0 6px; font-size: 16px; font-weight: 700; letter-spacing: -0.02em;  background: linear-gradient(135deg, #6366f1, #ec4899);  -webkit-background-clip: text; background-clip: text; color: transparent;}
 .donate-section p { margin: 0; font-size: 13px; line-height: 1.55; color: var(--bento-text-secondary, #57534e); letter-spacing: -0.005em; }
@@ -2272,9 +2327,9 @@ class HATraceViewer extends HTMLElement {
   display: flex; align-items: center; justify-content: center; font-size: 11px; flex-shrink: 0;
   font-weight: 600;
 }
-.tl-title { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.tl-title { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .tl-cat { font-size: 10px; font-weight: 700; color: var(--bento-primary); text-transform: uppercase; letter-spacing: 0.04em; }
-.tl-desc { font-size: 13px; font-weight: 500; color: var(--bento-text); }
+.tl-desc { font-size: 13px; font-weight: 500; color: var(--bento-text); overflow-wrap: anywhere; }
 .tl-dur { font-size: 11px; color: var(--bento-text-secondary); white-space: nowrap; font-weight: 600; }
 .tl-err {
   margin-top: 8px; padding: 8px 12px; background: rgba(239, 68, 68, 0.08);
@@ -2417,6 +2472,8 @@ class HATraceViewer extends HTMLElement {
 .card.compact-mobile h2 { font-size: 18px; }
 .card.compact-mobile h3 { font-size: 15px; }
 .card.compact-xs .tabs { gap: 1px; }
+.card.compact-xs .topbar { flex-wrap: wrap; gap: 8px; }
+.card.compact-xs .topbar-r { flex-wrap: wrap; min-width: 0; max-width: 100%; }
 .card.compact-xs .tab, .card.compact-xs .tab-btn { padding: 5px 8px; font-size: 11px; }
 .card.compact-xs .stats, .card.compact-xs .stats-grid, .card.compact-xs .summary-grid, .card.compact-xs .stat-cards, .card.compact-xs .kpi-grid, .card.compact-xs .metrics-grid { grid-template-columns: 1fr 1fr; }
 .card.compact-xs .stat-val, .card.compact-xs .kpi-val, .card.compact-xs .metric-val { font-size: 16px; }
