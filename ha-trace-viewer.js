@@ -801,6 +801,7 @@ class HATraceViewer extends HTMLElement {
   setConfig(config) { this.config = { title: 'Trace Viewer', ...config }; if (this._hass) this.render(); }
 
   set hass(hass) {
+    const previousLanguage = this._lang;
     try {
       var _bg = (getComputedStyle(this).getPropertyValue('--card-background-color') || getComputedStyle(this).getPropertyValue('--primary-background-color') || '').trim();
       var _d = false;
@@ -821,7 +822,7 @@ class HATraceViewer extends HTMLElement {
       this._allTraces = [];
       this._traceMap = {};
       this.updateAutomationData();
-    }
+    } else if (hass && previousLanguage !== this._lang) this.render();
   }
 
   // ============================================================
