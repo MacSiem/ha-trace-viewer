@@ -1,5 +1,7 @@
 ## 4.1.15 (2026-09-29)
 
+- Refresh administrator controls and the household permission message after ordinary Home Assistant language changes without rereading trace history. Preserve active search text, focus and selection; same-language state updates retain the form DOM.
+
 - Wrap long timeline action paths within narrow Sections cards.
 - Refresh selected automation traces while retaining saved history, updating All Traces and the automation last-run time.
 - Reset automation filters when changing views and explain unavailable trace details.
