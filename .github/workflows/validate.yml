@@ -47,3 +47,4 @@ jobs:
           node tests/search_focus.test.cjs
           node tests/history_refresh.test.cjs
           node --test tests/locale_lifecycle.test.cjs
+          node --test tests/region-support-locale.test.cjs

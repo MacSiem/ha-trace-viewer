@@ -793,7 +793,7 @@ class HATraceViewer extends HTMLElement {
   }
 
   _t(key) {
-    const lang = this._hass?.language || 'en';
+    const lang = (this._hass?.language || 'en').startsWith('pl') ? 'pl' : 'en';
     const T = HATraceViewer._translations;
     return (T[lang] || T['en'])[key] || T['en'][key] || key;
   }
@@ -1778,7 +1778,7 @@ class HATraceViewer extends HTMLElement {
             ${this._renderDetail()}
           </div>
         </div>
-        ${this._hass?.user?.is_admin && this.config?.show_support !== false && !this._supportDismissed() ? `<div class="donate-section" data-source="own-card" style="margin:8px 0 0;padding:4px 0;background:none;border:0;box-shadow:none;min-height:0;display:flex;gap:8px;align-items:center;flex-wrap:wrap;flex-direction:row;justify-content:flex-start;text-align:left"><a href="https://buymeacoffee.com/macsiem" target="_blank" rel="noopener noreferrer" style="font-size:11px;color:var(--secondary-text-color,#64748b);font-weight:400;text-decoration:underline">Optional support for HA Tools</a><button type="button" class="support-dismiss" aria-label="Dismiss support link" style="margin-left:auto;padding:2px 6px;min-height:0;line-height:1;border:0;background:none;color:var(--secondary-text-color,#64748b);cursor:pointer">×</button></div>` : ''}
+        ${this._hass?.user?.is_admin && this.config?.show_support !== false && !this._supportDismissed() ? `<div class="donate-section" data-source="own-card" style="margin:8px 0 0;padding:4px 0;background:none;border:0;box-shadow:none;min-height:0;display:flex;gap:8px;align-items:center;flex-wrap:wrap;flex-direction:row;justify-content:flex-start;text-align:left"><a href="https://buymeacoffee.com/macsiem" target="_blank" rel="noopener noreferrer" style="font-size:11px;color:var(--secondary-text-color,#64748b);font-weight:400;text-decoration:underline">${this._lang === 'pl' ? 'Dobrowolne wsparcie HA Tools' : 'Optional support for HA Tools'}</a><button type="button" class="support-dismiss" aria-label="${this._lang === 'pl' ? 'Ukryj link wsparcia' : 'Dismiss support link'}" style="margin-left:auto;padding:2px 6px;min-height:0;line-height:1;border:0;background:none;color:var(--secondary-text-color,#64748b);cursor:pointer">×</button></div>` : ''}
       </div>
     </div>`;
     this._bindEvents();

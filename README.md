@@ -109,3 +109,5 @@ MIT, see [LICENSE](LICENSE).
 Automation traces can include entity identifiers, service arguments and household activity. Saved browser data belongs to the current Home Assistant origin and is not a shared backup. Review redacted exports before sharing; keep raw traces private.
 
 See [SECURITY.md](SECURITY.md) for safe vulnerability reporting and [NOTICE](NOTICE) for licensing notices.
+
+Polish regional locales such as `pl-PL` use the Polish dictionary consistently. Ordinary language updates translate optional support labels while preserving the search draft, focus and text selection, without reloading trace history. Dismissed support stays hidden.

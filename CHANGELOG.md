@@ -15,6 +15,8 @@
 
 ## 4.1.14 (2026-09-01)
 
+- Use Polish translations for regional Polish locales, and translate optional support labels while preserving search focus and existing trace history.
+
 - Fixed Trace Viewer content crossing its Home Assistant Sections row boundary and overlapping the following card.
 - Sections now use the viewer's natural content height instead of a fixed ten-row allocation.
 - Added a regression check that rejects fixed row constraints for this dynamic card.
