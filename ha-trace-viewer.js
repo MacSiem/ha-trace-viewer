@@ -1423,7 +1423,7 @@ class HATraceViewer extends HTMLElement {
     // Allowlist: no raw config, variables, service arguments, names, identifiers,
     // paths, absolute times or arbitrary strings reach a sharing export.
     if (!names.has(f.s.item_id)) names.set(f.s.item_id, 'Automation ' + (names.size + 1));
-    const status = ['success', 'error', 'running', 'stopped', 'unknown'].includes(f.s.status) ? f.s.status : 'unknown';
+    const status = ['success', 'error', 'running', 'stopped', 'aborted', 'unknown'].includes(f.s.status) ? f.s.status : 'unknown';
     return { redacted: true, run_id: 'Run ' + (index + 1), automation: names.get(f.s.item_id),
       status, duration_ms: Number.isFinite(f.s.duration) ? f.s.duration : null,
       detail: f.d ? { available: true, step_count: Object.values(f.d.trace || {}).reduce((n, steps) => n + (Array.isArray(steps) ? steps.length : 0), 0) } : null };
@@ -1869,12 +1869,23 @@ class HATraceViewer extends HTMLElement {
     $('#settingsPageSize')?.addEventListener('change', e => { this.tracePageSize = Number(e.target.value); this.tracePage = 0; this._savePageSize(this.tracePageSize); this.render(); });
     $('#closeTraceSettings')?.addEventListener('click', () => { this._showSettings = false; this.render(); $('#goToSettingsBtn')?.focus(); });
     // Export dropdown
+    const closeExportMenu = () => {
+      $('#expDD')?.classList.remove('open');
+      if (this._expDDClose) document.removeEventListener('click', this._expDDClose);
+      this._expDDClose = null;
+    };
     $('#expBtn')?.addEventListener('click', e => {
       e.stopPropagation();
-      const dd = $('#expDD'); dd.classList.toggle('open');
-      const close = () => { dd.classList.remove('open'); document.removeEventListener('click', close); };
-      this._expDDClose = close;
-      setTimeout(() => document.addEventListener('click', close), 0);
+      const dd = $('#expDD'), open = !dd.classList.contains('open');
+      closeExportMenu();
+      if (!open) return;
+      dd.classList.add('open');
+      this._expDDClose = closeExportMenu;
+      document.addEventListener('click', closeExportMenu);
+    });
+    $('#expDD')?.addEventListener('click', e => e.stopPropagation());
+    $('#expDD')?.addEventListener('keydown', e => {
+      if (e.key === 'Escape') { e.stopPropagation(); closeExportMenu(); $('#expBtn')?.focus(); }
     });
     $('#redactExport')?.addEventListener('change', e => { this._redactExport = e.target.checked; });
     $$('[data-retry]').forEach(el => el.addEventListener('click', () => el.dataset.retry === 'all' ? this.updateAutomationData() : this._loadTraces(this.selectedAutomation)));
@@ -1886,7 +1897,7 @@ class HATraceViewer extends HTMLElement {
       else if (a === 'sel-csv') this._export('csv', true, this._redactExport !== false);
       else if (a === 'auto-json') this._exportMultiAuto('json', this._redactExport !== false);
       else if (a === 'auto-csv') this._exportMultiAuto('csv', this._redactExport !== false);
-      $('#expDD').classList.remove('open');
+      closeExportMenu();
     }));
 
     // Controls
