@@ -1,5 +1,6 @@
 ## 4.1.15 (2026-10-06)
 
+- Use Polish translations for regional Polish locales, and translate optional support labels while preserving search focus and existing trace history.
 - Offer redacted JSON/CSV exports by default while retaining an explicit raw option. Omit identifying data, variables, service arguments and configuration from sharing exports.
 - Quote CSV fields correctly and neutralize formula-like values; retain stored details when the server has expired a run.
 - Cancel pending trace and export requests when the user or administrator role changes, and prevent older detail responses replacing the latest selection.
@@ -21,8 +22,6 @@
 - Replace the prominent support panel with one optional, dismissible link visible only to administrators.
 
 ## 4.1.14 (2026-09-01)
-
-- Use Polish translations for regional Polish locales, and translate optional support labels while preserving search focus and existing trace history.
 
 - Fixed Trace Viewer content crossing its Home Assistant Sections row boundary and overlapping the following card.
 - Sections now use the viewer's natural content height instead of a fixed ten-row allocation.
