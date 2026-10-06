@@ -820,6 +820,7 @@ class HATraceViewer extends HTMLElement {
     const roleChanged = !firstLoad && (this._hass?.user?.id !== hass?.user?.id || !!this._hass?.user?.is_admin !== !!hass?.user?.is_admin);
     if (firstLoad || roleChanged) {
       this._accessEpoch++; this._traceLoadToken = null; this._detailLoadToken = null;
+      this._loadingSelected = false; this._traceListError = null; this.traceDetail = null;
       this.selectedAutomation = null; this.selectedTrace = null;
       this.selectedTraceIds.clear(); this.selectedAutoIds.clear();
     }
@@ -1901,7 +1902,7 @@ class HATraceViewer extends HTMLElement {
     }));
 
     // Controls
-    $('#viewSel')?.addEventListener('change', e => { this.viewMode = e.target.value; this.searchQuery = ''; this._detailLoadToken = null; this._traceLoadToken = null; this.selectedAutomation = null; this.selectedTrace = null; this.traceDetail = null; this.selectedTraceIds.clear(); this.selectMode = false;
+    $('#viewSel')?.addEventListener('change', e => { this.viewMode = e.target.value; this.searchQuery = ''; this._detailLoadToken = null; this._traceLoadToken = null; this._loadingSelected = false; this._traceListError = null; this.selectedAutomation = null; this.selectedTrace = null; this.traceDetail = null; this.selectedTraceIds.clear(); this.selectMode = false;
     this.tracePage = 0; this.autoPage = 0;
     this.tracePageSize = this._loadPageSize(); this.applyFiltersAndSort(); this._saveCurrentSettings(); this.render(); });
     $('#grpSel')?.addEventListener('change', e => { this.groupBy = e.target.value; this._saveCurrentSettings(); this.render(); });
@@ -2523,6 +2524,11 @@ class HATraceViewer extends HTMLElement {
   }
   disconnectedCallback() {
     this._accessEpoch++; this._traceLoadToken = null; this._detailLoadToken = null;
+    // Canceled requests cannot finish their loading state after reconnection.
+    // Keep completed details, but clear a selection whose request was canceled.
+    if (this.selectedTrace && !this.traceDetail) this.selectedTrace = null;
+    if (this._loadingSelected) this.selectedAutomation = null;
+    this._loadingSelected = false; this._loadingTraces = false; this._traceListError = null;
     if (this.relativeTimeUpdater) clearInterval(this.relativeTimeUpdater);
     if (this._resizeObserver) { this._resizeObserver.disconnect(); this._resizeObserver = null; }
     if (this._expDDClose) { document.removeEventListener('click', this._expDDClose); this._expDDClose = null; }
