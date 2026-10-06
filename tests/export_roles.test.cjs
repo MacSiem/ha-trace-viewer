@@ -1,0 +1,25 @@
+const {test}=require('node:test');
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const {JSDOM,VirtualConsole}=require('jsdom');
+function fixture(){
+ const dom=new JSDOM('',{runScripts:'outside-only',url:'http://qa.invalid',virtualConsole:new VirtualConsole()});
+ dom.window.ResizeObserver=class{observe(){}disconnect(){}};
+ dom.window.Blob=Blob;let download;
+ dom.window.URL.createObjectURL=b=>{download=b;return 'blob:qa';};dom.window.URL.revokeObjectURL=()=>{};
+ dom.window.HTMLAnchorElement.prototype.click=function(){};
+ dom.window.eval(fs.readFileSync('ha-trace-viewer.js','utf8'));
+ const card=dom.window.document.createElement('ha-trace-viewer');card.setConfig({});dom.window.document.body.append(card);
+ const hass={language:'en',user:{id:'admin',is_admin:true},states:{},themes:{},callWS:async()=>[]};card._hass=hass;
+ const raw={item_id:'private-item',run_id:'private-run',timestamp:{start:'2026-01-01T00:00:00Z'},script_execution:'finished'};
+ const trace={id:raw.run_id,item_id:raw.item_id,automationName:'=1+1',timestamp:new Date(raw.timestamp.start),status:'success',duration:10,trigger:'say "hi", now\nnext',lastStep:'action/0'};
+ card.traces=[trace];card._allFlatTraces=[trace];card._storedDetails['private-item::private-run']={config:{token:'QA_SENTINEL'},trace:{'action/0':[{timestamp:'2026-01-01T00:00:00Z',changed_variables:{secret:'QA_SENTINEL'}}]}};
+ return {dom,card,hass,raw,trace,download:()=>download,close:()=>{card.remove();dom.window.close();}};
+}
+test('CSV neutralizes formulas and quotes separators, quotes and newlines',async()=>{const f=fixture();try{f.card._hass.callWS=async()=>({});await f.card._export('csv',false);const csv=await f.download().text();assert.match(csv,/"'=1\+1"/);assert.match(csv,/"say ""hi"", now\nnext"/);}finally{f.close();}});
+test('expired trace export retains stored details',async()=>{const f=fixture();try{f.card._hass.callWS=async()=>{throw Error('expired');};await f.card._export('json',false);assert.match(await f.download().text(),/QA_SENTINEL/);}finally{f.close();}});
+test('redacted export never includes raw detail, identifiers, names or absolute times',async()=>{const f=fixture();try{f.card._hass.callWS=async()=>f.card._storedDetails['private-item::private-run'];await f.card._export('json',false,true);const data=await f.download().text();assert.doesNotMatch(data,/QA_SENTINEL|private-item|private-run|2026-01-01|=1\+1/);assert.match(data,/redacted/);}finally{f.close();}});
+test('role change invalidates pending global trace refresh before persistence',async()=>{const f=fixture();try{let finish;f.card._hass.callWS=()=>new Promise(r=>finish=r);const pending=f.card.updateAutomationData();f.card.hass={...f.hass,user:{id:'household',is_admin:false}};finish([f.raw]);await pending;assert.equal(f.card._allTraces.length,0);assert.doesNotMatch(f.dom.window.localStorage.getItem('ha-tools-trace-viewer-stored')||'',/private-run/);}finally{f.close();}});
+test('role change cancels pending export',async()=>{const f=fixture();try{let finish;f.card._hass.callWS=()=>new Promise(r=>finish=r);const pending=f.card._export('json',false);f.card.hass={...f.hass,user:{id:'household',is_admin:false}};finish({token:'QA_SENTINEL'});await pending;assert.equal(f.download(),undefined);}finally{f.close();}});
+test('out of order trace detail cannot overwrite latest selection',async()=>{const f=fixture();try{const other={...f.trace,id:'b'};f.card.traces.push(other);const resolves={};f.card._hass.callWS=m=>new Promise(r=>resolves[m.run_id]=r);const a=f.card.onTraceClick('private-run');const b=f.card.onTraceClick('b');resolves.b({trace:{}});await b;resolves['private-run']({trace:{}});await a;assert.equal(f.card.traceDetail.trace.id,'b');}finally{f.close();}});
+test('first trace request renders loading and per-automation failures offer retry',async()=>{const f=fixture();try{let finish;f.card._hass.callWS=()=>new Promise(r=>finish=r);const pending=f.card.updateAutomationData();assert.match(f.card.shadowRoot.textContent,/Loading/);finish([]);await pending;f.card._rawAutomations=[{entity:'automation.qa',automationId:'qa'}];f.card.selectedAutomation='automation.qa';f.card._hass.callWS=async()=>{throw Error('offline');};await f.card._loadTraces('automation.qa');assert.match(f.card.shadowRoot.textContent,/Could not load/);assert(f.card.shadowRoot.querySelector('[data-retry]'));}finally{f.close();}});
