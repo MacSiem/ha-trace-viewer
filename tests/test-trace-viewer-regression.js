@@ -104,7 +104,7 @@ async function testYamlAutomationFetchesPerItemTracesAndClearsStaleState() {
   const renderSnapshots = [];
 
   viewer._hass = {
-    language: 'en',
+    language: 'en', user: { is_admin: true },
     states: {
       'automation.domofon_sync_trybu': {
         state: 'on',
@@ -166,7 +166,7 @@ async function testNumericAutomationRetainsCachedTraceBucketAfterRefreshing() {
   const calls = [];
 
   viewer._hass = {
-    language: 'en',
+    language: 'en', user: { is_admin: true },
     states: {},
     callWS: async msg => {
       calls.push(msg);
