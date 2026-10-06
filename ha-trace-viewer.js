@@ -551,6 +551,7 @@ class HATraceViewer extends HTMLElement {
     this._storedTraces = {};
     this._storedDetails = {};
     this._adminStorageLoaded = false;
+    this._accessEpoch = 0;
 
     // Auto-refresh
     this.relativeTimeUpdater = null;
@@ -816,7 +817,12 @@ class HATraceViewer extends HTMLElement {
 
     if (hass?.language) this._lang = hass.language.startsWith('pl') ? 'pl' : 'en';
     const firstLoad = !this._hass;
-    const roleChanged = !firstLoad && !!this._hass?.user?.is_admin !== !!hass?.user?.is_admin;
+    const roleChanged = !firstLoad && (this._hass?.user?.id !== hass?.user?.id || !!this._hass?.user?.is_admin !== !!hass?.user?.is_admin);
+    if (firstLoad || roleChanged) {
+      this._accessEpoch++; this._traceLoadToken = null; this._detailLoadToken = null;
+      this.selectedAutomation = null; this.selectedTrace = null;
+      this.selectedTraceIds.clear(); this.selectedAutoIds.clear();
+    }
     this._hass = hass;
     if (firstLoad || roleChanged) {
       this._allTraces = [];
@@ -827,7 +833,10 @@ class HATraceViewer extends HTMLElement {
 
   // ============================================================
 
+  _isAdminSession(epoch) { return epoch === this._accessEpoch && !!this._hass?.user?.is_admin; }
+
   async updateAutomationData() {
+    const access = this._accessEpoch;
     if (!this._hass) return;
     if (!this._hass.user?.is_admin) {
       this._allTraces = [];
@@ -850,14 +859,18 @@ class HATraceViewer extends HTMLElement {
       this._adminStorageLoaded = true;
     }
     let liveTraces = [];
+    this._loadingTraces = true; this.render();
     try {
       liveTraces = await this._hass.callWS({ type: 'trace/list', domain: 'automation' });
+      if (!this._isAdminSession(access)) return;
       this._fetchError = null;
     } catch (e) {
-      this._fetchError = (e && e.message) ? 'Could not load traces: ' + e.message : 'Could not load traces';
+      if (!this._isAdminSession(access)) return;
+      this._fetchError = this._lang === 'pl' ? 'Nie można wczytać śladów.' : 'Could not load traces.';
       console.warn('[Trace Viewer] Could not fetch traces:', e);
     }
 
+    this._loadingTraces = false;
     // Merge live traces with stored (persisted) traces
     this._allTraces = this._mergeAndStoreTraces(liveTraces);
 
@@ -1027,6 +1040,7 @@ class HATraceViewer extends HTMLElement {
   // ============================================================
 
   onAutoClick(entity) {
+    this._detailLoadToken = null;
     this.selectedAutomation = entity;
     this.selectedTrace = null;
     this.traceDetail = null;
@@ -1057,6 +1071,9 @@ class HATraceViewer extends HTMLElement {
   }
 
   async _loadTraces(entity) {
+    const access = this._accessEpoch;
+    if (!this._isAdminSession(access)) return;
+    this._detailLoadToken = null; this._traceListError = null; this._loadingSelected = true;
     const loadToken = {};
     this._traceLoadToken = loadToken;
     this.traces = [];
@@ -1068,7 +1085,7 @@ class HATraceViewer extends HTMLElement {
     const auto = this._rawAutomations.find(a => a.entity === entity);
     const aid = auto?.automationId;
     const aidKey = this._traceKey(aid);
-    if (!aidKey) return;
+    if (!aidKey) { this._loadingSelected = false; this.render(); return; }
 
     if (this._traceMap[aidKey]) {
       this._applyTraceBucket(this._traceMap[aidKey], auto, entity, aid);
@@ -1077,7 +1094,7 @@ class HATraceViewer extends HTMLElement {
 
     try {
       const liveTraces = await this._hass.callWS({ type: 'trace/list', domain: 'automation', item_id: aid });
-      if (this._traceLoadToken !== loadToken || this.selectedAutomation !== entity) return;
+      if (!this._isAdminSession(access) || this._traceLoadToken !== loadToken || this.selectedAutomation !== entity) return;
       const bucket = this._cacheItemTraces(aid, Array.isArray(liveTraces) ? liveTraces : []);
       if (bucket) {
         auto.triggerCount = bucket.count;
@@ -1089,12 +1106,15 @@ class HATraceViewer extends HTMLElement {
         this._applyTraceBucket(bucket, auto, entity, aid);
       }
     } catch (e) {
-      console.warn('[Trace Viewer] Could not fetch automation traces:', e);
+      if (!this._isAdminSession(access) || this._traceLoadToken !== loadToken || this.selectedAutomation !== entity) return;
+      this._traceListError = this._lang === 'pl' ? 'Nie można wczytać śladów tej automatyzacji.' : 'Could not load automation traces.';
     }
-    this.render();
+    this._loadingSelected = false; this.render();
   }
 
   async onTraceClick(traceId) {
+    const access = this._accessEpoch;
+    if (!this._isAdminSession(access)) return;
     if (this.selectMode) {
       this.selectedTraceIds.has(traceId) ? this.selectedTraceIds.delete(traceId) : this.selectedTraceIds.add(traceId);
       this.render();
@@ -1102,6 +1122,7 @@ class HATraceViewer extends HTMLElement {
     }
     const trace = this.traces.find(t => t.id === traceId) || this._allFlatTraces.find(t => t.id === traceId);
     if (!trace) return;
+    const detailToken = {}; this._detailLoadToken = detailToken;
     this.selectedTrace = traceId;
     this.traceDetail = null;
     this.detailTab = 'timeline';
@@ -1112,11 +1133,13 @@ class HATraceViewer extends HTMLElement {
         type: 'trace/get', domain: 'automation',
         item_id: trace.item_id, run_id: trace.id
       });
+      if (!this._isAdminSession(access) || this._detailLoadToken !== detailToken || this.selectedTrace !== traceId) return;
       // Persist detail for future use (HA may purge)
       this._storedDetails[trace.item_id + '::' + trace.id] = detail;
       this._saveStoredDetails();
       this.traceDetail = this._buildDetail(trace, detail);
     } catch (e) {
+      if (!this._isAdminSession(access) || this._detailLoadToken !== detailToken || this.selectedTrace !== traceId) return;
       // Try loading from stored details
       const storedKey = trace.item_id + '::' + trace.id;
       if (this._storedDetails[storedKey]) {
@@ -1370,103 +1393,87 @@ class HATraceViewer extends HTMLElement {
 
   // ============================================================
 
-  async _export(fmt, onlySelected) {
-    let list = onlySelected && this.selectedTraceIds.size > 0
-      ? this._allFlatTraces.filter(t => this.selectedTraceIds.has(t.id))
-      : this.viewMode === 'all-traces' ? this._filteredFlat() : this.traces;
-    if (!list.length) return;
-
-    const full = [];
-    for (const t of list) {
-      try {
-        const d = await this._hass.callWS({ type: 'trace/get', domain: 'automation', item_id: t.item_id, run_id: t.id });
-        full.push({ s: t, d });
-      } catch (e) { full.push({ s: t, d: null }); }
-    }
-
-    let content, filename, mime;
-    if (fmt === 'json') {
-      content = JSON.stringify(full.map(f => ({
-        run_id: f.s.id, item_id: f.s.item_id, automation: f.s.automationName,
-        timestamp: f.s.timestamp.toISOString(), finish: f.s.finishTime?.toISOString(),
-        status: f.s.status, duration_ms: f.s.duration, trigger: f.s.trigger,
-        detail: f.d
-      })), null, 2);
-      filename = `traces-${Date.now()}.json`; mime = 'application/json';
-    } else {
-      const rows = [['run_id','automation','timestamp','status','duration_ms','trigger','last_step']];
-      full.forEach(f => rows.push([f.s.id, `"${f.s.automationName}"`, f.s.timestamp.toISOString(), f.s.status, f.s.duration, `"${f.s.trigger}"`, `"${f.s.lastStep}"`]));
-      content = rows.map(r => r.join(',')).join('\n');
-      filename = `traces-${Date.now()}.csv`; mime = 'text/csv';
-    }
-
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([content], { type: mime }));
-    a.download = filename; a.click();
+  _csvCell(value) {
+    if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+    let text = String(value ?? '');
+    if (/^[\s\u0000-\u001f]*[=+\-@]/.test(text) || /^[\t\r\n]/.test(text)) text = "'" + text;
+    return '"' + text.replace(/"/g, '""') + '"';
   }
 
-  async _exportMultiAuto(fmt) {
-    if (!this.selectedAutoIds.size) return;
-    const autoEntities = [...this.selectedAutoIds];
-    const allTraces = [];
-
-    for (const entity of autoEntities) {
-      const auto = this._rawAutomations.find(a => a.entity === entity);
-      const aid = auto?.automationId;
-      const aidKey = this._traceKey(aid);
-      if (aidKey && this._traceMap[aidKey]) {
-        for (const t of this._traceMap[aidKey].traces) {
-          const st = t.timestamp?.start ? new Date(t.timestamp.start) : new Date();
-          const ft = t.timestamp?.finish ? new Date(t.timestamp.finish) : st;
-          allTraces.push({
-            id: t.run_id, item_id: t.item_id, automationEntity: entity,
-            automationName: auto?.name || entity,
-            timestamp: st, finishTime: ft,
-            status: this._traceStatus(t), duration: ft - st,
-            lastStep: t.last_step || '', scriptExecution: t.script_execution || '',
-            trigger: t.trigger || 'unknown', raw: t
-          });
-        }
-      }
-    }
-
-    if (!allTraces.length) return;
-
+  async _exportDetails(list, access) {
     const full = [];
-    for (const t of allTraces) {
-      try {
-        const d = await this._hass.callWS({ type: 'trace/get', domain: 'automation', item_id: t.item_id, run_id: t.id });
-        full.push({ s: t, d });
-      } catch (e) {
-        const stored = this._storedDetails[t.item_id + '::' + t.id];
-        full.push({ s: t, d: stored || null });
-      }
+    for (const trace of list) {
+      if (!this._isAdminSession(access)) return null;
+      let detail;
+      try { detail = await this._hass.callWS({ type: 'trace/get', domain: 'automation', item_id: trace.item_id, run_id: trace.id }); }
+      catch (_) { detail = this._storedDetails[trace.item_id + '::' + trace.id] || null; }
+      if (!this._isAdminSession(access)) return null;
+      full.push({ s: trace, d: detail });
     }
+    return full;
+  }
 
-    let content, filename, mime;
+  _exportRecord(f, redact, index, names) {
+    if (!redact) return {
+      run_id: f.s.id, item_id: f.s.item_id, automation: f.s.automationName,
+      timestamp: f.s.timestamp.toISOString(), finish: f.s.finishTime?.toISOString(),
+      status: f.s.status, duration_ms: f.s.duration, trigger: f.s.trigger,
+      last_step: f.s.lastStep, detail: f.d
+    };
+    // Allowlist: no raw config, variables, service arguments, names, identifiers,
+    // paths, absolute times or arbitrary strings reach a sharing export.
+    if (!names.has(f.s.item_id)) names.set(f.s.item_id, 'Automation ' + (names.size + 1));
+    const status = ['success', 'error', 'running', 'stopped', 'unknown'].includes(f.s.status) ? f.s.status : 'unknown';
+    return { redacted: true, run_id: 'Run ' + (index + 1), automation: names.get(f.s.item_id),
+      status, duration_ms: Number.isFinite(f.s.duration) ? f.s.duration : null,
+      detail: f.d ? { available: true, step_count: Object.values(f.d.trace || {}).reduce((n, steps) => n + (Array.isArray(steps) ? steps.length : 0), 0) } : null };
+  }
+
+  _downloadExport(full, fmt, grouped, redact, access) {
+    if (!this._isAdminSession(access)) return;
+    const names = new Map();
+    const records = full.map((f, i) => this._exportRecord(f, redact, i, names));
+    let content;
     if (fmt === 'json') {
-      const grouped = {};
-      full.forEach(f => {
-        if (!grouped[f.s.automationName]) grouped[f.s.automationName] = [];
-        grouped[f.s.automationName].push({
-          run_id: f.s.id, item_id: f.s.item_id,
-          timestamp: f.s.timestamp.toISOString(), finish: f.s.finishTime?.toISOString(),
-          status: f.s.status, duration_ms: f.s.duration, trigger: f.s.trigger,
-          detail: f.d
-        });
-      });
-      content = JSON.stringify(grouped, null, 2);
-      filename = `automations-export-${Date.now()}.json`; mime = 'application/json';
+      if (grouped) {
+        const groups = Object.create(null);
+        records.forEach(record => { (groups[record.automation] ||= []).push(record); });
+        content = JSON.stringify(groups, null, 2);
+      } else content = JSON.stringify(records, null, 2);
     } else {
-      const rows = [['automation','run_id','timestamp','status','duration_ms','trigger','last_step']];
-      full.forEach(f => rows.push([`"${f.s.automationName}"`, f.s.id, f.s.timestamp.toISOString(), f.s.status, f.s.duration, `"${f.s.trigger}"`, `"${f.s.lastStep}"`]));
-      content = rows.map(r => r.join(',')).join('\n');
-      filename = `automations-export-${Date.now()}.csv`; mime = 'text/csv';
+      const keys = redact ? ['redacted','run_id','automation','status','duration_ms']
+        : ['run_id','automation','timestamp','status','duration_ms','trigger','last_step'];
+      content = [keys, ...records.map(record => keys.map(key => record[key]))]
+        .map(row => row.map(cell => this._csvCell(cell)).join(',')).join('\r\n');
     }
-
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([content], { type: mime }));
-    a.download = filename; a.click();
+    const url = URL.createObjectURL(new Blob([content], { type: fmt === 'json' ? 'application/json' : 'text/csv;charset=utf-8' }));
+    a.href = url; a.download = `${grouped ? 'automations' : 'traces'}-${redact ? 'redacted-' : ''}${Date.now()}.${fmt}`;
+    a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  async _export(fmt, onlySelected, redact = false) {
+    const access = this._accessEpoch;
+    if (!this._isAdminSession(access)) return;
+    const available = this.viewMode === 'all-traces' ? this._filteredFlat() : this.traces;
+    const list = onlySelected ? available.filter(t => this.selectedTraceIds.has(t.id)) : available;
+    if (!list.length) return;
+    const full = await this._exportDetails(list, access);
+    if (full) this._downloadExport(full, fmt, false, redact, access);
+  }
+
+  async _exportMultiAuto(fmt, redact = false) {
+    const access = this._accessEpoch;
+    if (!this._isAdminSession(access) || !this.selectedAutoIds.size) return;
+    const list = [];
+    for (const entity of this.selectedAutoIds) {
+      const auto = this._rawAutomations.find(a => a.entity === entity);
+      const aid = this._traceKey(auto?.automationId);
+      if (aid && this._traceMap[aid]) list.push(...this._traceMap[aid].traces.map(t => this._traceSummary(t, auto, entity, aid)));
+    }
+    if (!list.length) return;
+    const full = await this._exportDetails(list, access);
+    if (full) this._downloadExport(full, fmt, true, redact, access);
   }
 
   // ============================================================
@@ -1698,7 +1705,9 @@ class HATraceViewer extends HTMLElement {
     this.shadowRoot.innerHTML = `${this._css()}
     <div class="card">
       <div class="col-main">
-        ${this._fetchError ? `<div style="margin:0 0 10px;padding:10px 14px;background:var(--bento-error-light,rgba(239,68,68,0.08));color:var(--bento-error,#EF4444);border:1px solid var(--bento-error-border,rgba(239,68,68,0.25));border-radius:var(--bento-radius-sm,10px);font-size:13px;font-weight:500">⚠ ${_esc(this._fetchError)}</div>` : ''}
+        ${this._loadingTraces || this._loadingSelected ? `<div role="status">${this._lang === 'pl' ? 'Wczytywanie śladów…' : 'Loading traces…'}</div>` : ''}
+        ${this._traceListError ? `<div role="alert">${_esc(this._traceListError)} <button class="btn-s" data-retry="selected">${this._lang === 'pl' ? 'Ponów' : 'Retry'}</button></div>` : ''}
+        ${this._fetchError ? `<div style="margin:0 0 10px;padding:10px 14px;background:var(--bento-error-light,rgba(239,68,68,0.08));color:var(--bento-error,#EF4444);border:1px solid var(--bento-error-border,rgba(239,68,68,0.25));border-radius:var(--bento-radius-sm,10px);font-size:13px;font-weight:500">⚠ ${_esc(this._fetchError)} <button class="btn-s" data-retry="all">${this._lang === 'pl' ? 'Ponów' : 'Retry'}</button></div>` : ''}
         <!-- TOP BAR -->
         <div class="topbar">
           <span class="title">${_esc(this.config.title || this._t('traceViewer'))}</span>
@@ -1707,6 +1716,8 @@ class HATraceViewer extends HTMLElement {
             <div class="dd" id="expDD">
               <button class="btn-s" id="expBtn" ${selN === 0 && this.selectedAutoIds.size === 0 ? 'disabled style="opacity:0.4;pointer-events:none;cursor:default"' : ''}>${this._t('export')} \u25BE</button>
               <div class="dd-menu">
+                <label class="dd-i"><input id="redactExport" type="checkbox" ${this._redactExport !== false ? 'checked' : ''}> ${this._lang === 'pl' ? 'Usuń dane identyfikujące (do udostępniania)' : 'Redact identifying data (for sharing)'}</label>
+                <div style="padding:8px;font-size:11px">${this._lang === 'pl' ? 'Surowe dane mogą zawierać sekrety. Sprawdź plik przed udostępnieniem.' : 'Raw exports may include secrets. Review any file before sharing.'}</div>
                 ${selN > 0 ? `<div class="dd-i" data-exp="sel-json">JSON (${selN} traces ${this._t('selected')})</div><div class="dd-i" data-exp="sel-csv">CSV (${selN} traces ${this._t('selected')})</div><div class="dd-div"></div>` : ''}
                 ${this.selectedAutoIds.size > 0 ? `<div class="dd-i" data-exp="auto-json">JSON (${this.selectedAutoIds.size} ${this._t('automations')})</div><div class="dd-i" data-exp="auto-csv">CSV (${this.selectedAutoIds.size} ${this._t('automations')})</div><div class="dd-div"></div>` : ''}
                 
@@ -1857,19 +1868,21 @@ class HATraceViewer extends HTMLElement {
       this._expDDClose = close;
       setTimeout(() => document.addEventListener('click', close), 0);
     });
+    $('#redactExport')?.addEventListener('change', e => { this._redactExport = e.target.checked; });
+    $$('[data-retry]').forEach(el => el.addEventListener('click', () => el.dataset.retry === 'all' ? this.updateAutomationData() : this._loadTraces(this.selectedAutomation)));
     $$('.dd-i[data-exp]').forEach(el => el.addEventListener('click', () => {
       const a = el.dataset.exp;
-      if (a === 'all-json') this._export('json', false);
-      else if (a === 'all-csv') this._export('csv', false);
-      else if (a === 'sel-json') this._export('json', true);
-      else if (a === 'sel-csv') this._export('csv', true);
-      else if (a === 'auto-json') this._exportMultiAuto('json');
-      else if (a === 'auto-csv') this._exportMultiAuto('csv');
+      if (a === 'all-json') this._export('json', false, this._redactExport !== false);
+      else if (a === 'all-csv') this._export('csv', false, this._redactExport !== false);
+      else if (a === 'sel-json') this._export('json', true, this._redactExport !== false);
+      else if (a === 'sel-csv') this._export('csv', true, this._redactExport !== false);
+      else if (a === 'auto-json') this._exportMultiAuto('json', this._redactExport !== false);
+      else if (a === 'auto-csv') this._exportMultiAuto('csv', this._redactExport !== false);
       $('#expDD').classList.remove('open');
     }));
 
     // Controls
-    $('#viewSel')?.addEventListener('change', e => { this.viewMode = e.target.value; this.searchQuery = ''; this.selectedAutomation = null; this.selectedTrace = null; this.traceDetail = null; this.selectedTraceIds.clear(); this.selectMode = false;
+    $('#viewSel')?.addEventListener('change', e => { this.viewMode = e.target.value; this.searchQuery = ''; this._detailLoadToken = null; this._traceLoadToken = null; this.selectedAutomation = null; this.selectedTrace = null; this.traceDetail = null; this.selectedTraceIds.clear(); this.selectMode = false;
     this.tracePage = 0; this.autoPage = 0;
     this.tracePageSize = this._loadPageSize(); this.applyFiltersAndSort(); this._saveCurrentSettings(); this.render(); });
     $('#grpSel')?.addEventListener('change', e => { this.groupBy = e.target.value; this._saveCurrentSettings(); this.render(); });
@@ -2490,6 +2503,7 @@ class HATraceViewer extends HTMLElement {
     this._resizeObserver.observe(this);
   }
   disconnectedCallback() {
+    this._accessEpoch++; this._traceLoadToken = null; this._detailLoadToken = null;
     if (this.relativeTimeUpdater) clearInterval(this.relativeTimeUpdater);
     if (this._resizeObserver) { this._resizeObserver.disconnect(); this._resizeObserver = null; }
     if (this._expDDClose) { document.removeEventListener('click', this._expDDClose); this._expDDClose = null; }
