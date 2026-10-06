@@ -1,4 +1,11 @@
-## 4.1.15 (2026-09-29)
+## 4.1.15 (2026-10-06)
+
+- Offer redacted JSON/CSV exports by default while retaining an explicit raw option. Omit identifying data, variables, service arguments and configuration from sharing exports.
+- Quote CSV fields correctly and neutralize formula-like values; retain stored details when the server has expired a run.
+- Cancel pending trace and export requests when the user or administrator role changes, and prevent older detail responses replacing the latest selection.
+- Clear canceled list/detail loading when changing views or reconnecting, while retaining completed details.
+- Render loading and retry states, and provide standalone browser-history settings with persistent page size.
+- Keep export options open while changing redaction, restore focus with Escape, and preserve aborted outcomes in redacted exports.
 
 - Refresh administrator controls and the household permission message after ordinary Home Assistant language changes without rereading trace history. Preserve active search text, focus and selection; same-language state updates retain the form DOM.
 
