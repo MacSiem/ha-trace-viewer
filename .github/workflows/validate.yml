@@ -48,3 +48,4 @@ jobs:
           node tests/history_refresh.test.cjs
           node --test tests/locale_lifecycle.test.cjs
           node --test tests/region-support-locale.test.cjs
+          node --test tests/export_roles.test.cjs

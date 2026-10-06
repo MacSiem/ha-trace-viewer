@@ -1712,7 +1712,7 @@ class HATraceViewer extends HTMLElement {
         <div class="topbar">
           <span class="title">${_esc(this.config.title || this._t('traceViewer'))}</span>
           <div class="topbar-r">
-            <span class="trace-saved-badge" id="traceStorageInfo" title="${this._lang === 'pl' ? 'Zapisane trace\u2019y' : 'Saved traces'}" style="font-size:11px;color:var(--bento-text-secondary);padding:4px 8px;background:var(--bento-bg);border-radius:var(--radius-xs);border:1px solid var(--bento-border);display:inline-flex;align-items:center;gap:4px">\u{1F4BE} ${this._getStoredTraceCount()} saved</span><span class="trace-settings-btn" id="goToSettingsBtn" title="${this._lang === 'pl' ? 'Ustawienia Trace Viewer' : 'Trace Viewer Settings'}" style="font-size:11px;color:var(--bento-text-secondary);padding:4px 8px;background:var(--bento-bg);border-radius:var(--radius-xs);border:1px solid var(--bento-border);cursor:pointer;display:inline-flex;align-items:center;gap:4px;margin-left:6px">\u2699\uFE0F ${this._lang === 'pl' ? 'Ustawienia' : 'Settings'}</span>
+            <span class="trace-saved-badge" id="traceStorageInfo" title="${this._lang === 'pl' ? 'Zapisane trace\u2019y' : 'Saved traces'}" style="font-size:11px;color:var(--bento-text-secondary);padding:4px 8px;background:var(--bento-bg);border-radius:var(--radius-xs);border:1px solid var(--bento-border);display:inline-flex;align-items:center;gap:4px">\u{1F4BE} ${this._getStoredTraceCount()} saved</span><button type="button" class="trace-settings-btn" id="goToSettingsBtn" title="${this._lang === 'pl' ? 'Ustawienia Trace Viewer' : 'Trace Viewer Settings'}" style="font-size:11px;color:var(--bento-text-secondary);padding:4px 8px;background:var(--bento-bg);border-radius:var(--radius-xs);border:1px solid var(--bento-border);cursor:pointer;display:inline-flex;align-items:center;gap:4px;margin-left:6px">\u2699\uFE0F ${this._lang === 'pl' ? 'Ustawienia' : 'Settings'}</button>
             <div class="dd" id="expDD">
               <button class="btn-s" id="expBtn" ${selN === 0 && this.selectedAutoIds.size === 0 ? 'disabled style="opacity:0.4;pointer-events:none;cursor:default"' : ''}>${this._t('export')} \u25BE</button>
               <div class="dd-menu">
@@ -1726,6 +1726,12 @@ class HATraceViewer extends HTMLElement {
           </div>
         </div>
 
+        ${this._showSettings ? `<section role="region" aria-label="${this._lang === 'pl' ? 'Ustawienia Trace Viewer' : 'Trace Viewer settings'}" style="padding:12px;border:1px solid var(--bento-border);border-radius:10px">
+          <p>${this._lang === 'pl' ? 'Historia jest przechowywana w tej przeglądarce i na tym urządzeniu: do 2000 śladów oraz 200 otwartych szczegółów. Czyszczenie danych przeglądarki usuwa historię. Eksportuj potrzebne ślady wcześniej.' : 'History is stored in this browser on this device: up to 2000 traces and 200 opened details. Clearing browser data removes this history. Export important traces first.'}</p>
+          <label>${this._lang === 'pl' ? 'Ślady na stronie' : 'Traces per page'} <select id="settingsPageSize">${[15,30,50,100].map(n => `<option value="${n}" ${this.tracePageSize === n ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+          <p>${this._lang === 'pl' ? 'Aby zwiększyć liczbę śladów po stronie Home Assistant, ustaw trace.stored_traces w konfiguracji automatyzacji. Ta karta nie zmienia automatyzacji.' : 'To retain more traces in Home Assistant, set trace.stored_traces in the automation configuration. This card does not change your automations.'}</p>
+          <button class="btn-s" id="closeTraceSettings">${this._lang === 'pl' ? 'Zamknij' : 'Close'}</button>
+        </section>` : ''}
         <!-- CONTROLS -->
         <div class="cbar">
           <div class="cg"><label>${this._t('viewMode')}</label><select id="viewSel">
@@ -1841,7 +1847,7 @@ class HATraceViewer extends HTMLElement {
       if (panel && panel._navigateToSettings) {
         panel._navigateToSettings('trace-backend');
       } else {
-        this.dispatchEvent(new CustomEvent('navigate-settings', { bubbles: true, composed: true, detail: { section: 'trace-backend' } }));
+        this._showSettings = !this._showSettings; this.render();
       }
     });
 
@@ -1856,10 +1862,12 @@ class HATraceViewer extends HTMLElement {
       if (panel && panel._navigateToSettings) {
         panel._navigateToSettings('trace-backend');
       } else {
-        this.dispatchEvent(new CustomEvent('navigate-settings', { bubbles: true, composed: true, detail: { section: 'trace-backend' } }));
+        this._showSettings = !this._showSettings; this.render();
       }
     });
 
+    $('#settingsPageSize')?.addEventListener('change', e => { this.tracePageSize = Number(e.target.value); this.tracePage = 0; this._savePageSize(this.tracePageSize); this.render(); });
+    $('#closeTraceSettings')?.addEventListener('click', () => { this._showSettings = false; this.render(); $('#goToSettingsBtn')?.focus(); });
     // Export dropdown
     $('#expBtn')?.addEventListener('click', e => {
       e.stopPropagation();
