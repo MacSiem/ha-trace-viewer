@@ -2885,7 +2885,8 @@ class HATraceViewer extends HTMLElement {
       const points = this._comparisonPoints(this._comparisonView);
       const index = points.findIndex(point => point.category !== 'unchanged');
       if (index < 0) return;
-      this._comparisonPage = Math.floor(index / 50); this.render();
+      const page = Math.floor(index / 50);
+      if (page !== this._comparisonPage) { this._comparisonPage = page; this.render(); }
       const first = $('#comparisonFirstDifference'); first?.focus({ preventScroll: true });
       first?.scrollIntoView?.({ block: 'nearest' });
     });
