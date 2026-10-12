@@ -2422,8 +2422,9 @@ class HATraceViewer extends HTMLElement {
         timestamp: new Date(+run.timestamp), automationName: String(run.automationName || run.item_id) });
     } else this._comparisonMessage = 'limit';
     this.render();
-    const focus = Array.from(this.shadowRoot.querySelectorAll('[data-compare-run], [data-remove-comparison]'))
-      .find(button => button.dataset.compareRun === key || button.dataset.removeComparison === key)
+    const focus = Array.from(this.shadowRoot.querySelectorAll('[data-compare-run]'))
+      .find(button => button.dataset.compareRun === key)
+      || Array.from(this.shadowRoot.querySelectorAll('[data-remove-comparison]')).find(button => button.dataset.removeComparison === key)
       || this.shadowRoot.querySelector('[data-remove-comparison], [data-compare-run], .comparison-picker');
     focus?.focus({ preventScroll: true });
   }
