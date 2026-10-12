@@ -226,3 +226,24 @@ test('null hass removes the old source DOM and comparison state', async t => {
   assert.equal(viewer._comparisonRuns.size, 0);
   assert.equal(viewer.shadowRoot.querySelector('#traceComparison'), null);
 });
+
+test('long comparisons page all recorded points and jump directly to the first difference without refetch', async t => {
+  let reads = 0;
+  const { viewer, rows } = fixture(t, undefined, async req => {
+    reads++;
+    return full(req.run_id, req.item_id,
+      Array.from({length:120}, (_,i) => [`action/${i}`, req.run_id === 'new' && i === 119 ? 4500 : i*30]),
+      {timestamp:{start:stamp(0),finish:stamp(5000)}});
+  });
+  rows.forEach(r => select(viewer,r));await viewer._compareSelectedRuns();
+  const points=()=>viewer.shadowRoot.querySelectorAll('.comparison-points li');
+  assert.equal(points().length,50);assert.match(viewer.shadowRoot.querySelector('#comparisonPageStatus').textContent,/1.*3/);
+  viewer.shadowRoot.querySelector('#comparisonNext').click();assert.equal(points().length,50);
+  assert.equal(viewer.shadowRoot.activeElement.id,'comparisonNext');
+  viewer.shadowRoot.querySelector('#jumpComparisonDifference').click();
+  assert.equal(points().length,20);assert.match(viewer.shadowRoot.querySelector('#comparisonPageStatus').textContent,/3.*3/);
+  assert.match(viewer.shadowRoot.activeElement.textContent,/action\/119/);
+  assert.equal(viewer.shadowRoot.querySelector('#comparisonNext').disabled,true);
+  viewer.shadowRoot.querySelector('#comparisonPrevious').click();assert.equal(points().length,50);
+  assert.equal(viewer.shadowRoot.activeElement.id,'comparisonPrevious');assert.equal(reads,2);
+});
