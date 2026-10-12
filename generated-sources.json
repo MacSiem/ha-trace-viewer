@@ -1,1 +1,9 @@
-{}
+{
+  "schema": 1,
+  "sharedTraceContract": {
+    "path": "shared/ha-tools-trace-contract.js",
+    "sha256": "a8ffe928be3cca6706d2f675844d31787d2ddaedbc0424c08f1c47af2722b16c",
+    "bytes": 36424,
+    "analyzerSnapshotSha256": "0f891270a1d1fc04636e1b8752b8a3856371068a3be98a67797639b566b237b3"
+  }
+}
