@@ -1335,6 +1335,7 @@ class HATraceViewer extends HTMLElement {
     this._comparisonOffline = navigator.onLine === false;
     this._comparisonTransportOffline = false;
     this._comparisonMessage = null;
+    this._comparisonPage = 0;
 
     // Multi-select for export
     this.selectedTraceIds = new Set();
@@ -2369,7 +2370,8 @@ class HATraceViewer extends HTMLElement {
       threshold: ['Próg czasu: co najmniej 20 ms; stosunek 1,25 (25% później/wolniej, 20% wcześniej/szybciej; Analyzer).', 'Timing threshold: at least 20 ms; ratio 1.25 (25% later/slower, 20% earlier/faster; Analyzer).'],
       order: ['Pierwsza = najwcześniejszy zapisany punkt od początku wykonania w jednym z tych śladów.', 'First = the earliest recorded elapsed execution point in either trace.'],
       timeout: ['Upłynął limit 10 s. Ponów porównanie.', 'The 10 s limit expired. Retry comparison.'],
-      offline: ['Brak połączenia z Home Assistant.', 'No connection to Home Assistant.']
+      offline: ['Brak połączenia z Home Assistant.', 'No connection to Home Assistant.'],
+      previous: ['Poprzednie punkty', 'Previous points'], next: ['Następne punkty', 'Next points']
     };
     return labels[key]?.[this._lang === 'pl' ? 0 : 1] || labels.unavailable[this._lang === 'pl' ? 0 : 1];
   }
@@ -2385,6 +2387,7 @@ class HATraceViewer extends HTMLElement {
     this._comparisonPending = null;
     this._comparisonView = null;
     this._comparisonMessage = null;
+    this._comparisonPage = 0;
     if (clearSelection) {
       this._comparisonSourceEpoch++;
       this._comparisonRuns.clear();
@@ -2536,6 +2539,9 @@ class HATraceViewer extends HTMLElement {
     const result = view.result;
     const points = this._comparisonPoints(view);
     const first = points.find(point => point.category !== 'unchanged');
+    const pages = Math.max(1, Math.ceil(points.length / 50));
+    this._comparisonPage = Math.min(this._comparisonPage || 0, pages - 1);
+    const shown = points.slice(this._comparisonPage * 50, (this._comparisonPage + 1) * 50);
     const records = view.runs.map((run, index) => `<div class="comparison-record"><strong>${this._comparisonText(index === 0 ? 'baseline' : 'current')}</strong>
       <span>${_esc(run.item_id)} / ${_esc(run.id)}</span><time>${_esc(this._fmtTime(run.timestamp))}</time></div>`).join('');
     const timing = result?.data?.run;
@@ -2547,8 +2553,10 @@ class HATraceViewer extends HTMLElement {
       <p>${this._comparisonText('scope')}</p><p>${this._comparisonText('threshold')}</p><p>${this._comparisonText('order')}</p>
       ${timing ? `<p>${this._comparisonText('run')}: ${timing.delta_ms === null ? this._comparisonText('unknown') : `${this._comparisonText(timing.classification)} (${_esc(timing.delta_ms)} ms)`}</p>` : ''}
       ${result?.data ? `<div class="comparison-actions">${first ? `<button type="button" id="jumpComparisonDifference" class="comparison-button">${this._comparisonText('jump')}</button>` : `<p>${this._comparisonText('no_difference')}</p>`}</div>
-        <ul class="comparison-points">${points.map(point => `<li ${point === first ? 'id="comparisonFirstDifference" tabindex="-1" class="comparison-first"' : ''}>
-          ${point === first ? `<strong>${this._comparisonText('first')}: </strong>` : ''}<span>${_esc(point.path)} #${point.ordinal + 1}</span>
+        <p id="comparisonPageStatus" role="status" tabindex="-1">${this._lang === 'pl' ? 'Strona' : 'Page'} ${this._comparisonPage + 1} / ${pages} · ${points.length} ${this._lang === 'pl' ? 'zapisanych punktów' : 'recorded points'}</p>
+        ${pages > 1 ? `<nav class="comparison-actions" aria-label="${this._lang === 'pl' ? 'Strony punktów porównania' : 'Comparison point pages'}"><button type="button" id="comparisonPrevious" class="comparison-button" ${this._comparisonPage === 0 ? 'disabled' : ''}>${this._comparisonText('previous')}</button><button type="button" id="comparisonNext" class="comparison-button" ${this._comparisonPage === pages - 1 ? 'disabled' : ''}>${this._comparisonText('next')}</button></nav>` : ''}
+        <ul class="comparison-points">${shown.map(point => `<li ${point.path === first?.path && point.ordinal === first?.ordinal ? 'id="comparisonFirstDifference" tabindex="-1" class="comparison-first"' : ''}>
+          ${point.path === first?.path && point.ordinal === first?.ordinal ? `<strong>${this._comparisonText('first')}: </strong>` : ''}<span>${_esc(point.path)} #${point.ordinal + 1}</span>
           <span>${this._comparisonText(point.category)}</span><span>${_esc(point.offset)} ms${Object.hasOwn(point, 'delta_ms') ? ` (Δ ${_esc(point.delta_ms)} ms)` : ''}</span></li>`).join('')}</ul>` : ''}
     </section>`;
   }
@@ -2874,8 +2882,17 @@ class HATraceViewer extends HTMLElement {
       if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); this._closeComparison(); }
     });
     $('#jumpComparisonDifference')?.addEventListener('click', () => {
+      const points = this._comparisonPoints(this._comparisonView);
+      const index = points.findIndex(point => point.category !== 'unchanged');
+      if (index < 0) return;
+      this._comparisonPage = Math.floor(index / 50); this.render();
       const first = $('#comparisonFirstDifference'); first?.focus({ preventScroll: true });
       first?.scrollIntoView?.({ block: 'nearest' });
+    });
+    for (const [id, offset] of [['comparisonPrevious', -1], ['comparisonNext', 1]]) $('#'+id)?.addEventListener('click', () => {
+      const pages = Math.max(1, Math.ceil(this._comparisonPoints(this._comparisonView).length / 50));
+      this._comparisonPage = Math.max(0, Math.min(pages - 1, this._comparisonPage + offset)); this.render();
+      const focus = $('#'+id); (focus && !focus.disabled ? focus : $('#comparisonPageStatus'))?.focus({ preventScroll: true });
     });
 
     // Trace storage info badge -- navigate to panel Settings >
