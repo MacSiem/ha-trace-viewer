@@ -2,6 +2,794 @@
 (function() {
 'use strict';
 
+/* BEGIN INLINE shared/ha-tools-trace-contract.js */
+// Vendored from ha-automation-analyzer 14e297fd841ba6838e6ea31e3346d7cf3d887156.
+// Input SHA256: 0f891270a1d1fc04636e1b8752b8a3856371068a3be98a67797639b566b237b3.
+// Local factory: unchanged Analyzer snapshot; no global registration or second diff engine.
+function createHAToolsTraceContract() {
+// BEGIN ANALYZER TRACE SNAPSHOT
+const AA_TRACE_SOURCE = 'home_assistant.trace_ws_v1';
+const AA_TRACE_MAX_BYTES = 2 * 1024 * 1024;
+const AA_TRACE_MAX_DEPTH = 16;
+const AA_TRACE_MAX_STRING_BYTES = 4096;
+const AA_TRACE_MAX_OBJECT_FIELDS = 128;
+const AA_TRACE_MAX_ARRAY = 4096;
+const AA_TRACE_MAX_PATHS = 512;
+const AA_TRACE_MAX_ELEMENTS = 4096;
+const AA_TRACE_MAX_SELECTED_RUNS = 100;
+const AA_TRACE_MAX_GLOBAL_RUNS = 5000;
+const AA_TRACE_BANNED_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+const AA_TRACE_LIST_FIELDS = new Set([
+  'last_step', 'run_id', 'state', 'script_execution', 'timestamp', 'domain',
+  'item_id', 'not_triggered', 'error', 'trigger'
+]);
+const AA_TRACE_FULL_FIELDS = new Set([
+  ...AA_TRACE_LIST_FIELDS, 'trace', 'config', 'blueprint_inputs', 'context'
+]);
+const AA_TRACE_LEGACY_FIELDS = new Set([
+  'last_step', 'run_id', 'state', 'script_execution', 'timestamp', 'domain',
+  'item_id', 'not_triggered', 'error', 'trigger', 'path'
+]);
+const AA_TRACE_ELEMENT_FIELDS = new Set([
+  'path', 'timestamp', 'child_id', 'changed_variables', 'error',
+  'template_errors', 'result'
+]);
+const AA_TRACE_PATH_PATTERN = /^[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)*$/;
+const AA_TRACE_TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/;
+
+function _aaTraceObservedAt(value) {
+  if (_aaParseTimestamp(value) !== null) return value;
+  return new Date().toISOString();
+}
+
+function _aaTraceCapability(status, observedAt, evidence, data) {
+  const result = {
+    status,
+    source: AA_TRACE_SOURCE,
+    observed_at: _aaTraceObservedAt(observedAt),
+    evidence: evidence || {}
+  };
+  if (data !== undefined) result.data = data;
+  return result;
+}
+
+function _aaUtf8Bytes(value, maxBytes = Infinity) {
+  let bytes = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    const codeUnit = value.charCodeAt(index);
+    if (codeUnit <= 0x7f) bytes += 1;
+    else if (codeUnit <= 0x7ff) bytes += 2;
+    else if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
+      const low = value.charCodeAt(index + 1);
+      if (!(low >= 0xdc00 && low <= 0xdfff)) return Infinity;
+      bytes += 4;
+      index += 1;
+    } else if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
+      return Infinity;
+    } else bytes += 3;
+    if (bytes > maxBytes) return Infinity;
+  }
+  return bytes;
+}
+
+function _aaIsPlainObject(value) {
+  try {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+    const proto = Reflect.getPrototypeOf(value);
+    if (proto === null) return true;
+    if (Reflect.getPrototypeOf(proto) !== null) return false;
+    const constructorDescriptor = Reflect.getOwnPropertyDescriptor(proto, 'constructor');
+    return Boolean(
+      constructorDescriptor && 'value' in constructorDescriptor
+      && typeof constructorDescriptor.value === 'function'
+      && constructorDescriptor.value.name === 'Object'
+    );
+  } catch (_error) {
+    return false;
+  }
+}
+
+function _aaInspectTracePayload(value, options = {}) {
+  const maxBytes = options.maxBytes || AA_TRACE_MAX_BYTES;
+  const maxRootArray = options.maxRootArray || AA_TRACE_MAX_ARRAY;
+  const wideObject = options.wideObject || null;
+  const wideObjectMaxFields = options.wideObjectMaxFields || AA_TRACE_MAX_OBJECT_FIELDS;
+  let bytes = 0;
+  const seen = new WeakSet();
+
+  const addBytes = amount => {
+    bytes += amount;
+    if (!Number.isFinite(bytes) || bytes > maxBytes) throw new Error('trace_payload_limit');
+  };
+
+  const visit = (current, depth) => {
+    if (depth > AA_TRACE_MAX_DEPTH) throw new Error('trace_depth_limit');
+    if (current === null) { addBytes(4); return; }
+    if (typeof current === 'string') {
+      const length = _aaUtf8Bytes(current, AA_TRACE_MAX_STRING_BYTES);
+      if (length > AA_TRACE_MAX_STRING_BYTES) throw new Error('trace_string_limit');
+      addBytes(length + 2);
+      return;
+    }
+    if (typeof current === 'number') {
+      if (!Number.isFinite(current)) throw new Error('trace_non_finite_number');
+      addBytes(16);
+      return;
+    }
+    if (typeof current === 'boolean') { addBytes(5); return; }
+    if (typeof current !== 'object') throw new Error('trace_invalid_type');
+    if (seen.has(current)) throw new Error('trace_cycle');
+    seen.add(current);
+
+    if (Array.isArray(current)) {
+      const arrayLimit = depth === 0 ? maxRootArray : AA_TRACE_MAX_ARRAY;
+      if (current.length > arrayLimit) throw new Error('trace_array_limit');
+      const ownKeys = Reflect.ownKeys(current);
+      for (const key of ownKeys) {
+        if (key === 'length') continue;
+        if (typeof key !== 'string' || !/^\d+$/.test(key)) throw new Error('trace_array_property');
+        const descriptor = Reflect.getOwnPropertyDescriptor(current, key);
+        if (!descriptor || !descriptor.enumerable || !('value' in descriptor)) throw new Error('trace_accessor');
+      }
+      addBytes(2);
+      for (let index = 0; index < current.length; index += 1) {
+        const descriptor = Reflect.getOwnPropertyDescriptor(current, String(index));
+        if (!descriptor || !('value' in descriptor)) throw new Error('trace_sparse_array');
+        visit(descriptor.value, depth + 1);
+      }
+      seen.delete(current);
+      return;
+    }
+
+    if (!_aaIsPlainObject(current)) throw new Error('trace_non_plain_object');
+    const ownKeys = Reflect.ownKeys(current);
+    const objectLimit = current === wideObject ? wideObjectMaxFields : AA_TRACE_MAX_OBJECT_FIELDS;
+    if (ownKeys.length > objectLimit) throw new Error('trace_object_fields_limit');
+    addBytes(2);
+    for (const key of ownKeys) {
+      if (typeof key !== 'string' || AA_TRACE_BANNED_KEYS.has(key)) throw new Error('trace_banned_key');
+      const keyBytes = _aaUtf8Bytes(key, AA_TRACE_MAX_STRING_BYTES);
+      if (keyBytes > AA_TRACE_MAX_STRING_BYTES) throw new Error('trace_key_limit');
+      addBytes(keyBytes + 2);
+      const descriptor = Reflect.getOwnPropertyDescriptor(current, key);
+      if (!descriptor || !descriptor.enumerable || !('value' in descriptor)) throw new Error('trace_accessor');
+      visit(descriptor.value, depth + 1);
+    }
+    seen.delete(current);
+  };
+
+  try {
+    visit(value, 0);
+    return { ok: true, bytes };
+  } catch (_error) {
+    return { ok: false, bytes };
+  }
+}
+
+function _aaHasOnlyFields(value, allowed) {
+  return Reflect.ownKeys(value).every(key => typeof key === 'string' && allowed.has(key));
+}
+
+function _aaParseTimestamp(value) {
+  if (typeof value !== 'string' || !AA_TRACE_TIMESTAMP_PATTERN.test(value)) return null;
+  const milliseconds = Date.parse(value);
+  return Number.isFinite(milliseconds) ? milliseconds : null;
+}
+
+function _aaCompareText(left, right) {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function _aaValidateRunTimestamp(timestamp, state) {
+  if (!_aaIsPlainObject(timestamp) || !_aaHasOnlyFields(timestamp, new Set(['start', 'finish']))) return null;
+  const start = _aaParseTimestamp(timestamp.start);
+  const finish = timestamp.finish === null ? null : _aaParseTimestamp(timestamp.finish);
+  if (start === null || (timestamp.finish !== null && finish === null)) return null;
+  if (state === 'stopped' && finish === null) return null;
+  if (finish !== null && finish < start) return null;
+  return { start, finish };
+}
+
+function _aaValidateRunIdentity(value, expectedItemId, global = false) {
+  if (typeof value.run_id !== 'string' || !value.run_id) return null;
+  if (value.domain !== 'automation') return null;
+  if (typeof value.item_id !== 'string' || !value.item_id) return null;
+  if (!global && value.item_id !== expectedItemId) return null;
+  if (value.state !== 'running' && value.state !== 'stopped') return null;
+  if (value.script_execution !== null && typeof value.script_execution !== 'string') return null;
+  const timestamp = _aaValidateRunTimestamp(value.timestamp, value.state);
+  return timestamp ? { timestamp } : null;
+}
+
+function _aaNormalizeListChecked(payload, options = {}) {
+  const observedAt = options.observedAt;
+  const expectedItemId = options.expectedItemId;
+  const global = options.global === true;
+  const maxRuns = global ? AA_TRACE_MAX_GLOBAL_RUNS : AA_TRACE_MAX_SELECTED_RUNS;
+  const inspection = _aaInspectTracePayload(payload, { maxRootArray: maxRuns });
+  if (!inspection.ok || !Array.isArray(payload) || payload.length > maxRuns
+    || (!global && typeof expectedItemId !== 'string')) {
+    return _aaTraceCapability('malformed', observedAt, { endpoint: 'trace/list', error_code: 'malformed' });
+  }
+  const runs = [];
+  for (const value of payload) {
+    if (!_aaIsPlainObject(value) || !_aaHasOnlyFields(value, AA_TRACE_LIST_FIELDS)) {
+      return _aaTraceCapability('malformed', observedAt, { endpoint: 'trace/list', error_code: 'malformed' });
+    }
+    const identity = _aaValidateRunIdentity(value, expectedItemId, global);
+    if (!identity) return _aaTraceCapability('malformed', observedAt, { endpoint: 'trace/list', error_code: 'malformed' });
+    if (value.not_triggered !== undefined && typeof value.not_triggered !== 'boolean') {
+      return _aaTraceCapability('malformed', observedAt, { endpoint: 'trace/list', error_code: 'malformed' });
+    }
+    runs.push({
+      run_id: value.run_id,
+      item_id: value.item_id,
+      run_state: value.state,
+      script_execution: value.script_execution,
+      kind: value.not_triggered === true ? 'non_execution' : 'execution',
+      started_at: value.timestamp.start,
+      finished_at: value.timestamp.finish,
+      run_duration_ms: identity.timestamp.finish === null
+        ? null : identity.timestamp.finish - identity.timestamp.start
+    });
+  }
+  runs.sort((left, right) => {
+    const timeDelta = _aaParseTimestamp(right.started_at) - _aaParseTimestamp(left.started_at);
+    return timeDelta || _aaCompareText(left.run_id, right.run_id);
+  });
+  const status = runs.length ? 'available' : 'no_data';
+  return _aaTraceCapability(status, observedAt, {
+    endpoint: 'trace/list',
+    schema: 'ha-trace-list-v1',
+    run_count: runs.length
+  }, { runs });
+}
+
+function _aaNormalizeList(payload, options = {}) {
+  try {
+    return _aaNormalizeListChecked(payload, options);
+  } catch (_error) {
+    return _aaTraceCapability('malformed', options.observedAt, {
+      endpoint: 'trace/list', error_code: 'malformed'
+    });
+  }
+}
+
+function _aaTraceElementStatus(value) {
+  if (Object.hasOwn(value, 'error') || (Array.isArray(value.template_errors) && value.template_errors.length)) return 'error';
+  if (_aaIsPlainObject(value.changed_variables) && Reflect.ownKeys(value.changed_variables).length) return 'changed';
+  if (value.result === false) return 'skipped';
+  return 'pass';
+}
+
+function _aaNormalizeFullChecked(payload, options = {}) {
+  const observedAt = options.observedAt;
+  const expectedItemId = options.expectedItemId;
+  if (!_aaIsPlainObject(payload) || typeof expectedItemId !== 'string') {
+    return _aaTraceCapability('malformed', observedAt, { endpoint: 'trace/get', error_code: 'malformed' });
+  }
+  const isV1 = Object.hasOwn(payload, 'trace');
+  const isLegacy = Object.hasOwn(payload, 'path');
+  if (isV1 === isLegacy) return _aaTraceCapability('malformed', observedAt, { endpoint: 'trace/get', error_code: 'malformed' });
+  const traceDescriptor = isV1 ? Reflect.getOwnPropertyDescriptor(payload, 'trace') : null;
+  const wideObject = traceDescriptor && 'value' in traceDescriptor ? traceDescriptor.value : null;
+  const inspection = _aaInspectTracePayload(payload, {
+    wideObject,
+    wideObjectMaxFields: AA_TRACE_MAX_PATHS
+  });
+  if (!inspection.ok) {
+    return _aaTraceCapability('malformed', observedAt, { endpoint: 'trace/get', error_code: 'malformed' });
+  }
+  const allowed = isV1 ? AA_TRACE_FULL_FIELDS : AA_TRACE_LEGACY_FIELDS;
+  if (!_aaHasOnlyFields(payload, allowed)) {
+    return _aaTraceCapability('malformed', observedAt, { endpoint: 'trace/get', error_code: 'malformed' });
+  }
+  const identity = _aaValidateRunIdentity(payload, expectedItemId);
+  if (!identity) return _aaTraceCapability('malformed', observedAt, { endpoint: 'trace/get', error_code: 'malformed' });
+  if (payload.not_triggered !== undefined && typeof payload.not_triggered !== 'boolean') {
+    return _aaTraceCapability('malformed', observedAt, { endpoint: 'trace/get', error_code: 'malformed' });
+  }
+
+  const rawNodes = [];
+  if (isV1) {
+    if (!_aaIsPlainObject(payload.trace)) return _aaTraceCapability('malformed', observedAt, { endpoint: 'trace/get', error_code: 'malformed' });
+    const paths = Reflect.ownKeys(payload.trace);
+    if (paths.length > AA_TRACE_MAX_PATHS) return _aaTraceCapability('malformed', observedAt, { endpoint: 'trace/get', error_code: 'malformed' });
+    for (const path of paths) {
+      if (typeof path !== 'string' || !AA_TRACE_PATH_PATTERN.test(path)) {
+        return _aaTraceCapability('malformed', observedAt, { endpoint: 'trace/get', error_code: 'malformed' });
+      }
+      const values = payload.trace[path];
+      if (!Array.isArray(values)) return _aaTraceCapability('malformed', observedAt, { endpoint: 'trace/get', error_code: 'malformed' });
+      for (let ordinal = 0; ordinal < values.length; ordinal += 1) {
+        if (rawNodes.length >= AA_TRACE_MAX_ELEMENTS) {
+          return _aaTraceCapability('malformed', observedAt, { endpoint: 'trace/get', error_code: 'malformed' });
+        }
+        rawNodes.push({ value: values[ordinal], path, ordinal });
+      }
+    }
+  } else {
+    if (!Array.isArray(payload.path)) return _aaTraceCapability('malformed', observedAt, { endpoint: 'trace/get', error_code: 'malformed' });
+    const ordinalByPath = new Map();
+    for (const value of payload.path) {
+      if (rawNodes.length >= AA_TRACE_MAX_ELEMENTS) {
+        return _aaTraceCapability('malformed', observedAt, { endpoint: 'trace/get', error_code: 'malformed' });
+      }
+      const path = value?.path;
+      const ordinal = ordinalByPath.get(path) || 0;
+      ordinalByPath.set(path, ordinal + 1);
+      rawNodes.push({ value, path, ordinal });
+    }
+  }
+  if (rawNodes.length > AA_TRACE_MAX_ELEMENTS) return _aaTraceCapability('malformed', observedAt, { endpoint: 'trace/get', error_code: 'malformed' });
+
+  const nodes = [];
+  for (const raw of rawNodes) {
+    const value = raw.value;
+    if (!_aaIsPlainObject(value) || !_aaHasOnlyFields(value, AA_TRACE_ELEMENT_FIELDS)) {
+      return _aaTraceCapability('malformed', observedAt, { endpoint: 'trace/get', error_code: 'malformed' });
+    }
+    if (value.path !== raw.path || !AA_TRACE_PATH_PATTERN.test(raw.path)) {
+      return _aaTraceCapability('malformed', observedAt, { endpoint: 'trace/get', error_code: 'malformed' });
+    }
+    const timestamp = _aaParseTimestamp(value.timestamp);
+    if (timestamp === null || timestamp < identity.timestamp.start
+      || (identity.timestamp.finish !== null && timestamp > identity.timestamp.finish)) {
+      return _aaTraceCapability('malformed', observedAt, { endpoint: 'trace/get', error_code: 'malformed' });
+    }
+    nodes.push({
+      path: raw.path,
+      ordinal: raw.ordinal,
+      status: _aaTraceElementStatus(value),
+      offset_ms: timestamp - identity.timestamp.start,
+      _timestamp: timestamp
+    });
+  }
+  nodes.sort((left, right) => left._timestamp - right._timestamp
+    || _aaCompareText(left.path, right.path) || left.ordinal - right.ordinal);
+  for (const node of nodes) delete node._timestamp;
+  const schema = isV1 ? 'ha-trace-v1' : 'ha-trace-legacy-path-v0';
+  return _aaTraceCapability('available', observedAt, {
+    endpoint: 'trace/get',
+    schema,
+    node_count: nodes.length,
+    run_state: payload.state
+  }, {
+    run_id: payload.run_id,
+    item_id: payload.item_id,
+    run_state: payload.state,
+    kind: payload.not_triggered === true ? 'non_execution' : 'execution',
+    run_duration_ms: identity.timestamp.finish === null
+      ? null : identity.timestamp.finish - identity.timestamp.start,
+    nodes
+  });
+}
+
+function _aaNormalizeFull(payload, options = {}) {
+  try {
+    return _aaNormalizeFullChecked(payload, options);
+  } catch (_error) {
+    return _aaTraceCapability('malformed', options.observedAt, {
+      endpoint: 'trace/get', error_code: 'malformed'
+    });
+  }
+}
+
+function _aaClassifyTraceError(error, options = {}) {
+  let code = null;
+  if (_aaIsPlainObject(error)) {
+    const descriptor = Reflect.getOwnPropertyDescriptor(error, 'code');
+    if (descriptor && 'value' in descriptor && typeof descriptor.value === 'string') code = descriptor.value;
+  }
+  const status = code === 'unauthorized' ? 'permission_denied'
+    : code === 'not_found' ? 'no_data' : 'unavailable';
+  return _aaTraceCapability(status, options.observedAt, {
+    endpoint: options.endpoint || 'trace',
+    error_code: code === 'unauthorized' || code === 'not_found' ? code : 'unavailable'
+  });
+}
+
+function _aaAbortedCapability(endpoint, observedAt) {
+  return _aaTraceCapability('aborted', observedAt, { endpoint, error_code: 'aborted' });
+}
+
+function _aaIsAbortMarker(error) {
+  if (!_aaIsPlainObject(error)) return false;
+  try {
+    const descriptor = Reflect.getOwnPropertyDescriptor(error, '__aaTraceAborted');
+    return Boolean(descriptor && 'value' in descriptor && descriptor.value === true);
+  } catch (_ignored) {
+    return false;
+  }
+}
+
+function _aaAbortRace(promise, signal) {
+  if (!signal) return Promise.resolve(promise);
+  if (signal.aborted) return Promise.reject({ __aaTraceAborted: true });
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = callback => value => {
+      if (settled) return;
+      settled = true;
+      signal.removeEventListener('abort', onAbort);
+      callback(value);
+    };
+    const onAbort = finish(reject);
+    signal.addEventListener('abort', onAbort, { once: true });
+    Promise.resolve(promise).then(finish(resolve), finish(reject));
+  }).catch(error => {
+    if (signal.aborted) throw { __aaTraceAborted: true };
+    throw error;
+  });
+}
+
+function _aaRoleCapability(hass, endpoint, observedAt) {
+  if (!hass || !hass.user || typeof hass.user.is_admin !== 'boolean') {
+    return _aaTraceCapability('unknown_role', observedAt, { endpoint, error_code: 'unknown_role' });
+  }
+  if (hass.user.is_admin !== true) {
+    return _aaTraceCapability('permission_denied', observedAt, { endpoint, error_code: 'admin_required' });
+  }
+  return null;
+}
+
+async function _aaRequestTraceList(options = {}) {
+  const endpoint = 'trace/list';
+  const denied = _aaRoleCapability(options.hass, endpoint, options.observedAt);
+  if (denied) return denied;
+  if (options.signal?.aborted) return _aaAbortedCapability(endpoint, options.observedAt);
+  try {
+    const request = { type: 'trace/list', domain: 'automation' };
+    if (options.global !== true) request.item_id = options.itemId;
+    const payload = await _aaAbortRace(options.hass.callWS(request), options.signal);
+    if (options.signal?.aborted) return _aaAbortedCapability(endpoint, options.observedAt);
+    return _aaNormalizeList(payload, {
+      expectedItemId: options.itemId,
+      observedAt: options.observedAt,
+      global: options.global === true
+    });
+  } catch (error) {
+    if (options.signal?.aborted || _aaIsAbortMarker(error)) {
+      return _aaAbortedCapability(endpoint, options.observedAt);
+    }
+    return _aaClassifyTraceError(error, { endpoint, observedAt: options.observedAt });
+  }
+}
+
+async function _aaRequestServerSummary(options = {}) {
+  const endpoint = 'ha_automation_analyzer/summary';
+  const denied = _aaRoleCapability(options.hass, endpoint, options.observedAt);
+  if (denied) return denied;
+  if (options.signal?.aborted) return _aaAbortedCapability(endpoint, options.observedAt);
+  try {
+    const result = await _aaAbortRace(options.hass.callWS({ type: endpoint }), options.signal);
+    if (options.signal?.aborted) return _aaAbortedCapability(endpoint, options.observedAt);
+    const count = value => Number.isInteger(value) && value >= 0 && value <= AA_TRACE_MAX_GLOBAL_RUNS;
+    const byAutomation = result?.by_automation;
+    const daily = result?.daily_counts;
+    const durations = result?.durations_ms;
+    if (result?.schema !== 'aa-trace-summary-v1' || !count(result.run_count)
+      || !count(result.execution_count) || result.execution_count > result.run_count
+      || !_aaIsPlainObject(byAutomation) || Object.keys(byAutomation).length > AA_TRACE_MAX_GLOBAL_RUNS
+      || !Array.isArray(daily) || daily.length !== 14
+      || !Array.isArray(durations) || durations.length > AA_TRACE_MAX_GLOBAL_RUNS
+      || !durations.every(value => Number.isInteger(value) && value >= 0 && value < 300000)
+      || !daily.every(row => _aaIsPlainObject(row) && /^\d{4}-\d{2}-\d{2}$/.test(row.date) && count(row.count))
+      || !Object.entries(byAutomation).every(([id, row]) => typeof id === 'string' && id.length > 0 && id.length <= 255
+        && _aaIsPlainObject(row) && count(row.trace_count) && count(row.today_count) && count(row.error_count)
+        && row.today_count <= row.trace_count && row.error_count <= row.trace_count
+        && (row.avg_execution_ms === null || Number.isInteger(row.avg_execution_ms) && row.avg_execution_ms >= 0 && row.avg_execution_ms < 300000))) {
+      return _aaTraceCapability('malformed', options.observedAt, { endpoint, error_code: 'malformed' });
+    }
+    return {
+      status: result.execution_count ? 'available' : 'no_data',
+      source: 'home_assistant.aa_trace_summary_v1',
+      observed_at: _aaTraceObservedAt(options.observedAt),
+      evidence: { endpoint, schema: result.schema, run_count: result.run_count },
+      data: { summary: result }
+    };
+  } catch (error) {
+    if (options.signal?.aborted || _aaIsAbortMarker(error)) return _aaAbortedCapability(endpoint, options.observedAt);
+    return _aaClassifyTraceError(error, { endpoint, observedAt: options.observedAt });
+  }
+}
+
+async function _aaRequestFullTrace(options = {}) {
+  const endpoint = 'trace/get';
+  const denied = _aaRoleCapability(options.hass, endpoint, options.observedAt);
+  if (denied) return denied;
+  if (options.signal?.aborted) return _aaAbortedCapability(endpoint, options.observedAt);
+  try {
+    const payload = await _aaAbortRace(options.hass.callWS({
+      type: 'trace/get', domain: 'automation', item_id: options.itemId, run_id: options.runId
+    }), options.signal);
+    if (options.signal?.aborted) return _aaAbortedCapability(endpoint, options.observedAt);
+    return _aaNormalizeFull(payload, {
+      expectedItemId: options.itemId,
+      observedAt: options.observedAt
+    });
+  } catch (error) {
+    if (options.signal?.aborted || _aaIsAbortMarker(error)) {
+      return _aaAbortedCapability(endpoint, options.observedAt);
+    }
+    return _aaClassifyTraceError(error, { endpoint, observedAt: options.observedAt });
+  }
+}
+
+async function _aaRequestLatestTrace(options = {}) {
+  const listed = await _aaRequestTraceList(options);
+  if (listed.status !== 'available') return listed;
+  const latest = listed.data.runs.find(run => run.kind === 'execution');
+  if (!latest) return _aaTraceCapability('no_data', options.observedAt, {
+    endpoint: 'trace/get', error_code: 'no_execution_trace'
+  });
+  if (options.signal?.aborted) return _aaAbortedCapability('trace/get', options.observedAt);
+  return _aaRequestFullTrace({ ...options, runId: latest.run_id });
+}
+
+function _aaIsNormalizedRunSummary(run) {
+  return _aaIsPlainObject(run)
+    && _aaHasOnlyFields(run, new Set([
+      'run_id', 'item_id', 'run_state', 'script_execution', 'kind',
+      'started_at', 'finished_at', 'run_duration_ms'
+    ]))
+    && typeof run.run_id === 'string' && Boolean(run.run_id)
+    && typeof run.item_id === 'string' && Boolean(run.item_id)
+    && (run.run_state === 'running' || run.run_state === 'stopped')
+    && (run.script_execution === null || typeof run.script_execution === 'string')
+    && (run.kind === 'execution' || run.kind === 'non_execution')
+    && _aaParseTimestamp(run.started_at) !== null
+    && (run.finished_at === null || _aaParseTimestamp(run.finished_at) !== null)
+    && (run.run_duration_ms === null
+      || (Number.isFinite(run.run_duration_ms) && run.run_duration_ms >= 0));
+}
+
+function _aaPaginateTraceRuns(runs, options = {}) {
+  const observedAt = options.observedAt;
+  let validRuns = false;
+  try {
+    validRuns = _aaInspectTracePayload(runs, { maxRootArray: AA_TRACE_MAX_GLOBAL_RUNS }).ok
+      && Array.isArray(runs) && runs.length <= AA_TRACE_MAX_GLOBAL_RUNS
+      && runs.every(_aaIsNormalizedRunSummary);
+  } catch (_error) {}
+  if (!validRuns || !Number.isInteger(options.limit)
+    || options.limit < 1 || options.limit > 50) {
+    return _aaTraceCapability('malformed', observedAt, { endpoint: 'local/page', error_code: 'malformed' });
+  }
+  let offset = 0;
+  if (options.cursor !== null && options.cursor !== undefined) {
+    const match = /^aatc1\.(0|[1-9]\d*)$/.exec(options.cursor);
+    if (!match) return _aaTraceCapability('malformed', observedAt, { endpoint: 'local/page', error_code: 'invalid_cursor' });
+    offset = Number(match[1]);
+    if (!Number.isSafeInteger(offset) || offset >= runs.length) {
+      return _aaTraceCapability('malformed', observedAt, { endpoint: 'local/page', error_code: 'invalid_cursor' });
+    }
+  }
+  const items = runs.slice(offset, offset + options.limit);
+  const nextOffset = offset + items.length;
+  const nextCursor = nextOffset < runs.length ? `aatc1.${nextOffset}` : null;
+  return _aaTraceCapability('available', observedAt, {
+    endpoint: 'local/page', schema: 'aatc1', item_count: items.length
+  }, { items, next_cursor: nextCursor });
+}
+
+function _aaIsComparableTraceData(data) {
+  if (!_aaIsPlainObject(data) || !_aaInspectTracePayload(data).ok
+    || !_aaHasOnlyFields(data, new Set([
+      'run_id', 'item_id', 'run_state', 'kind', 'run_duration_ms', 'nodes'
+    ]))
+    || typeof data.run_id !== 'string' || !data.run_id
+    || typeof data.item_id !== 'string' || !data.item_id
+    || (data.run_state !== 'running' && data.run_state !== 'stopped')
+    || (data.kind !== 'execution' && data.kind !== 'non_execution')
+    || !(data.run_duration_ms === null
+      || (Number.isFinite(data.run_duration_ms) && data.run_duration_ms >= 0))
+    || !Array.isArray(data.nodes)) return false;
+  return data.nodes.every(node => _aaIsPlainObject(node)
+    && _aaHasOnlyFields(node, new Set(['path', 'ordinal', 'status', 'offset_ms']))
+    && typeof node.path === 'string' && AA_TRACE_PATH_PATTERN.test(node.path)
+    && Number.isInteger(node.ordinal) && node.ordinal >= 0
+    && ['pass', 'error', 'changed', 'skipped'].includes(node.status)
+    && Number.isFinite(node.offset_ms) && node.offset_ms >= 0);
+}
+
+function _aaCompareTraceRuns(baseline, current, options = {}) {
+  const observedAt = options.observedAt;
+  if (!_aaIsComparableTraceData(baseline) || !_aaIsComparableTraceData(current)) {
+    return _aaTraceCapability('malformed', observedAt, { endpoint: 'local/compare', error_code: 'malformed' });
+  }
+  if (baseline.kind !== 'execution' || current.kind !== 'execution') {
+    return _aaTraceCapability('no_data', observedAt, {
+      endpoint: 'local/compare', error_code: 'non_execution_trace'
+    });
+  }
+  const minimumDelta = Number.isFinite(options.minimumDeltaMs) ? Math.max(0, options.minimumDeltaMs) : 20;
+  const minimumRatio = Number.isFinite(options.minimumRatio) ? Math.max(1, options.minimumRatio) : 1.25;
+  const baselineByKey = new Map(baseline.nodes.map(node => [`${node.path}#${node.ordinal}`, node]));
+  const currentByKey = new Map(current.nodes.map(node => [`${node.path}#${node.ordinal}`, node]));
+  const categories = { added: [], removed: [], reached_later: [], reached_earlier: [], unchanged: [] };
+  const allKeys = [...new Set([...baselineByKey.keys(), ...currentByKey.keys()])].sort((leftKey, rightKey) => {
+    const left = baselineByKey.get(leftKey) || currentByKey.get(leftKey);
+    const right = baselineByKey.get(rightKey) || currentByKey.get(rightKey);
+    return _aaCompareText(left.path, right.path) || left.ordinal - right.ordinal;
+  });
+  for (const key of allKeys) {
+    const before = baselineByKey.get(key);
+    const after = currentByKey.get(key);
+    if (!before) { categories.added.push({ path: after.path, ordinal: after.ordinal }); continue; }
+    if (!after) { categories.removed.push({ path: before.path, ordinal: before.ordinal }); continue; }
+    const delta = after.offset_ms - before.offset_ms;
+    const ratio = before.offset_ms === 0 ? (after.offset_ms === 0 ? 1 : Infinity) : after.offset_ms / before.offset_ms;
+    const item = { path: after.path, ordinal: after.ordinal, delta_ms: delta };
+    if (delta >= minimumDelta && ratio >= minimumRatio) categories.reached_later.push(item);
+    else if (delta <= -minimumDelta && (ratio <= 1 / minimumRatio || after.offset_ms === 0)) categories.reached_earlier.push(item);
+    else categories.unchanged.push(item);
+  }
+  let runClassification = 'unchanged';
+  let runDelta = null;
+  if (baseline.run_duration_ms !== null && current.run_duration_ms !== null) {
+    runDelta = current.run_duration_ms - baseline.run_duration_ms;
+    const ratio = baseline.run_duration_ms === 0
+      ? (current.run_duration_ms === 0 ? 1 : Infinity)
+      : current.run_duration_ms / baseline.run_duration_ms;
+    if (runDelta >= minimumDelta && ratio >= minimumRatio) runClassification = 'slower';
+    else if (runDelta <= -minimumDelta && (ratio <= 1 / minimumRatio || current.run_duration_ms === 0)) runClassification = 'faster';
+  }
+  return _aaTraceCapability('available', observedAt, {
+    endpoint: 'local/compare', schema: 'ha-trace-comparison-v1', node_count: allKeys.length
+  }, {
+    run: { classification: runClassification, delta_ms: runDelta },
+    nodes: categories
+  });
+}
+
+function _aaIsDiagnosticTraceCapability(capability) {
+  if (!_aaIsPlainObject(capability) || !_aaInspectTracePayload(capability).ok
+    || !_aaHasOnlyFields(capability, new Set(['status', 'source', 'observed_at', 'evidence', 'data']))
+    || capability.status !== 'available' || capability.source !== AA_TRACE_SOURCE
+    || !_aaIsPlainObject(capability.evidence)
+    || !_aaHasOnlyFields(capability.evidence, new Set(['endpoint', 'schema', 'node_count', 'run_state']))
+    || capability.evidence.endpoint !== 'trace/get'
+    || (capability.evidence.schema !== 'ha-trace-v1'
+      && capability.evidence.schema !== 'ha-trace-legacy-path-v0')
+    || !_aaIsPlainObject(capability.data)
+    || !_aaHasOnlyFields(capability.data, new Set([
+      'run_id', 'item_id', 'run_state', 'kind', 'run_duration_ms', 'nodes'
+    ]))
+    || typeof capability.data.run_id !== 'string' || !capability.data.run_id
+    || typeof capability.data.item_id !== 'string' || !capability.data.item_id
+    || (capability.data.run_state !== 'running' && capability.data.run_state !== 'stopped')
+    || (capability.data.kind !== 'execution' && capability.data.kind !== 'non_execution')
+    || !(capability.data.run_duration_ms === null
+      || (Number.isFinite(capability.data.run_duration_ms) && capability.data.run_duration_ms >= 0))
+    || !Array.isArray(capability.data.nodes)) return false;
+  return capability.data.nodes.every(node => _aaIsPlainObject(node)
+    && _aaHasOnlyFields(node, new Set(['path', 'ordinal', 'status', 'offset_ms']))
+    && typeof node.path === 'string' && AA_TRACE_PATH_PATTERN.test(node.path)
+    && Number.isInteger(node.ordinal) && node.ordinal >= 0
+    && ['pass', 'error', 'changed', 'skipped'].includes(node.status)
+    && Number.isFinite(node.offset_ms) && node.offset_ms >= 0);
+}
+
+function _aaIsDiagnosticComparison(comparison) {
+  if (comparison === null || comparison === undefined) return true;
+  if (!_aaIsPlainObject(comparison) || !_aaInspectTracePayload(comparison).ok
+    || !_aaHasOnlyFields(comparison, new Set(['status', 'source', 'observed_at', 'evidence', 'data']))
+    || comparison.status !== 'available' || comparison.source !== AA_TRACE_SOURCE
+    || !_aaIsPlainObject(comparison.evidence)
+    || !_aaHasOnlyFields(comparison.evidence, new Set(['endpoint', 'schema', 'node_count']))
+    || comparison.evidence.endpoint !== 'local/compare'
+    || comparison.evidence.schema !== 'ha-trace-comparison-v1'
+    || !_aaIsPlainObject(comparison.data)
+    || !_aaHasOnlyFields(comparison.data, new Set(['run', 'nodes']))
+    || !_aaIsPlainObject(comparison.data.run)
+    || !_aaHasOnlyFields(comparison.data.run, new Set(['classification', 'delta_ms']))
+    || !['slower', 'faster', 'unchanged'].includes(comparison.data.run.classification)
+    || !(comparison.data.run.delta_ms === null || Number.isFinite(comparison.data.run.delta_ms))
+    || !_aaIsPlainObject(comparison.data.nodes)
+    || !_aaHasOnlyFields(comparison.data.nodes, new Set([
+      'added', 'removed', 'reached_later', 'reached_earlier', 'unchanged'
+    ]))) return false;
+  return ['added', 'removed', 'reached_later', 'reached_earlier', 'unchanged'].every(category => {
+    const values = comparison.data.nodes[category];
+    return Array.isArray(values) && values.every(node => _aaIsPlainObject(node)
+      && _aaHasOnlyFields(node, new Set(['path', 'ordinal', 'delta_ms']))
+      && typeof node.path === 'string' && AA_TRACE_PATH_PATTERN.test(node.path)
+      && Number.isInteger(node.ordinal) && node.ordinal >= 0
+      && (!Object.hasOwn(node, 'delta_ms') || Number.isFinite(node.delta_ms)));
+  });
+}
+
+function _aaBuildDiagnostic(options = {}) {
+  const capability = options.capability;
+  const comparison = options.comparison;
+  let valid = false;
+  try {
+    valid = _aaIsDiagnosticTraceCapability(capability) && _aaIsDiagnosticComparison(comparison);
+  } catch (_error) {
+    valid = false;
+  }
+  const data = valid ? capability.data : null;
+  if (!data) {
+    return { schema: 'ha-automation-analyzer-diagnostic-v1', generated_at: _aaTraceObservedAt(options.generatedAt), status: 'unavailable' };
+  }
+  const diagnostic = {
+    schema: 'ha-automation-analyzer-diagnostic-v1',
+    generated_at: _aaTraceObservedAt(options.generatedAt),
+    capability: {
+      status: capability.status,
+      source: capability.source,
+      schema: capability.evidence?.schema || null
+    },
+    run: {
+      alias: 'run_001',
+      state: data.run_state,
+      kind: data.kind,
+      duration_ms: data.run_duration_ms,
+      nodes: data.nodes.map(node => ({
+        path: node.path,
+        ordinal: node.ordinal,
+        status: node.status,
+        offset_ms: node.offset_ms
+      }))
+    }
+  };
+  if (comparison?.status === 'available') {
+    diagnostic.comparison = {
+      run: {
+        classification: comparison.data.run.classification,
+        delta_ms: comparison.data.run.delta_ms
+      },
+      nodes: Object.fromEntries(
+        ['added', 'removed', 'reached_later', 'reached_earlier', 'unchanged'].map(category => [
+          category,
+          comparison.data.nodes[category].map(node => ({
+            path: node.path,
+            ordinal: node.ordinal,
+            ...(Object.hasOwn(node, 'delta_ms') ? { delta_ms: node.delta_ms } : {})
+          }))
+        ])
+      )
+    };
+  }
+  return diagnostic;
+}
+
+function _aaDownloadDiagnostic(diagnostic, adapters = {}) {
+  const windowAdapter = adapters.window || window;
+  const documentAdapter = adapters.document || document;
+  const payload = JSON.stringify(diagnostic, null, 2) + '\n';
+  const blob = new windowAdapter.Blob([payload], { type: 'application/json' });
+  const url = windowAdapter.URL.createObjectURL(blob);
+  try {
+    const anchor = documentAdapter.createElement('a');
+    anchor.href = url;
+    anchor.download = 'ha-automation-analyzer-diagnostic.json';
+    anchor.rel = 'noopener';
+    anchor.click();
+  } finally {
+    windowAdapter.URL.revokeObjectURL(url);
+  }
+}
+
+const AA_TRACE_CONTRACT = Object.freeze({
+  normalizeList: _aaNormalizeList,
+  normalizeFull: _aaNormalizeFull,
+  paginate: _aaPaginateTraceRuns,
+  compare: _aaCompareTraceRuns,
+  classifyError: _aaClassifyTraceError,
+  requestList: _aaRequestTraceList,
+  requestFull: _aaRequestFullTrace,
+  requestLatest: _aaRequestLatestTrace,
+  buildDiagnostic: _aaBuildDiagnostic,
+  downloadDiagnostic: _aaDownloadDiagnostic
+});
+// END ANALYZER TRACE SNAPSHOT
+return AA_TRACE_CONTRACT;
+}
+/* END INLINE shared/ha-tools-trace-contract.js */
+const tvTraceContract = createHAToolsTraceContract();
+
 // Component-local persistence retains this card's existing localStorage keys.
 const haToolsPersistence = { _cache: {}, _hass: null, setHass(h) { this._hass = h; }, async save(k, d) { try { localStorage.setItem('ha-trace-viewer-' + k, JSON.stringify(d)); } catch(e) { console.debug('[ha-trace-viewer] caught:', e); } }, async load(k) { try { const r = localStorage.getItem('ha-trace-viewer-' + k); return r ? JSON.parse(r) : null; } catch(e) { return null; } }, loadSync(k) { try { const r = localStorage.getItem('ha-trace-viewer-' + k); return r ? JSON.parse(r) : null; } catch(e) { return null; } } };
 
@@ -536,6 +1324,18 @@ class HATraceViewer extends HTMLElement {
     this.customTimeFrom = null;
     this.customTimeTo = null;
 
+    // Comparison uses exact source identities, independently of export selection/filters.
+    this._comparisonRuns = new Map();
+    this._comparisonEpoch = 0;
+    this._comparisonSourceEpoch = 0;
+    this._comparisonDetailSourceEpoch = null;
+    this._comparisonView = null;
+    this._comparisonPending = null;
+    this._comparisonController = null;
+    this._comparisonOffline = navigator.onLine === false;
+    this._comparisonTransportOffline = false;
+    this._comparisonMessage = null;
+
     // Multi-select for export
     this.selectedTraceIds = new Set();
     this.selectedAutoIds = new Set();
@@ -818,14 +1618,20 @@ class HATraceViewer extends HTMLElement {
     if (hass?.language) this._lang = hass.language.startsWith('pl') ? 'pl' : 'en';
     const firstLoad = !this._hass;
     const roleChanged = !firstLoad && (this._hass?.user?.id !== hass?.user?.id || !!this._hass?.user?.is_admin !== !!hass?.user?.is_admin);
-    if (firstLoad || roleChanged) {
+    const sourceChanged = !firstLoad && (this._hass?.connection !== hass?.connection
+      || this._comparisonConnectionState !== hass?.connection?.connected);
+    if (firstLoad || roleChanged || sourceChanged) {
+      this._invalidateComparison(true);
       this._accessEpoch++; this._traceLoadToken = null; this._detailLoadToken = null;
       this._loadingSelected = false; this._traceListError = null; this.traceDetail = null;
       this.selectedAutomation = null; this.selectedTrace = null;
       this.selectedTraceIds.clear(); this.selectedAutoIds.clear();
     }
     this._hass = hass;
-    if (firstLoad || roleChanged) {
+    this._comparisonConnectionState = hass?.connection?.connected;
+    this._ensureComparisonLifecycle();
+    if (!hass) { this.shadowRoot.innerHTML = this._css(); return; }
+    if (firstLoad || roleChanged || sourceChanged) {
       this._allTraces = [];
       this._traceMap = {};
       this.updateAutomationData();
@@ -1115,6 +1921,7 @@ class HATraceViewer extends HTMLElement {
 
   async onTraceClick(traceId) {
     const access = this._accessEpoch;
+    const comparisonSource = this._comparisonSourceEpoch;
     if (!this._isAdminSession(access)) return;
     if (this.selectMode) {
       this.selectedTraceIds.has(traceId) ? this.selectedTraceIds.delete(traceId) : this.selectedTraceIds.add(traceId);
@@ -1139,12 +1946,14 @@ class HATraceViewer extends HTMLElement {
       this._storedDetails[trace.item_id + '::' + trace.id] = detail;
       this._saveStoredDetails();
       this.traceDetail = this._buildDetail(trace, detail);
+      this._comparisonDetailSourceEpoch = comparisonSource;
     } catch (e) {
       if (!this._isAdminSession(access) || this._detailLoadToken !== detailToken || this.selectedTrace !== traceId) return;
       // Try loading from stored details
       const storedKey = trace.item_id + '::' + trace.id;
       if (this._storedDetails[storedKey]) {
         this.traceDetail = this._buildDetail(trace, this._storedDetails[storedKey]);
+        this._comparisonDetailSourceEpoch = null; // Browser cache cannot establish current source identity.
       } else {
         this.traceDetail = {
           trace, steps: [], changedVars: [], rawData: { error: e.message },
@@ -1536,6 +2345,218 @@ class HATraceViewer extends HTMLElement {
 
   // ============================================================
 
+  _comparisonText(key) {
+    const labels = {
+      compare: ['Porównaj uruchomienia', 'Compare runs'], select: ['Wybierz do porównania', 'Select for comparison'],
+      remove: ['Usuń z porównania', 'Remove from comparison'], baseline: ['Bazowe (starsze)', 'Baseline (older)'],
+      current: ['Bieżące (nowsze)', 'Current (newer)'], close: ['Zamknij porównanie', 'Close comparison'],
+      choose: ['Wybierz dokładnie dwa uruchomienia tej samej automatyzacji.', 'Select exactly two runs of the same automation.'],
+      limit: ['Możesz wybrać najwyżej dwa uruchomienia.', 'You can select at most two runs.'],
+      different: ['Porównanie wymaga dwóch uruchomień tej samej automatyzacji.', 'Comparison requires two runs of the same automation.'],
+      loading: ['Wczytywanie dwóch wybranych śladów…', 'Loading the two selected traces…'],
+      malformed: ['Nieprawidłowe dane śladu', 'Malformed trace data'], no_data: ['Brak danych wykonania', 'No data for execution'],
+      unavailable: ['Porównanie niedostępne', 'Comparison unavailable'], permission_denied: ['Brak uprawnień administratora', 'Administrator permission required'],
+      unknown_role: ['Nie sprawdzono uprawnień', 'Permissions not checked'], aborted: ['Porównanie anulowane', 'Comparison canceled'],
+      unconfirmed: ['Niepotwierdzony — wykonanie nadal trwa', 'Unconfirmed — execution is still running'],
+      available: ['Porównanie zapisanych punktów wykonania', 'Comparison of recorded execution points'],
+      added: ['Dodane punkty', 'Added points'], removed: ['Usunięte punkty', 'Removed points'],
+      reached_later: ['Osiągnięte później', 'Reached later'], reached_earlier: ['Osiągnięte wcześniej', 'Reached earlier'],
+      unchanged: ['W granicach progu czasu', 'Within timing threshold'], slower: ['Wolniejsze', 'Slower'], faster: ['Szybsze', 'Faster'],
+      run: ['Czas całego uruchomienia', 'Whole run timing'], unknown: ['Brak danych czasu zakończenia', 'No completion timing data'],
+      first: ['Pierwsza różnica', 'First difference'], jump: ['Przejdź do pierwszej różnicy', 'Jump to first difference'],
+      no_difference: ['Brak różnic obecności lub czasu ponad próg w zapisanych punktach.', 'No recorded presence or timing differences above the threshold.'],
+      scope: ['Tylko obecność i czas punktów wykonania; bez porównania wartości zmiennych ani konfiguracji. Brak zapisu nie potwierdza pełnego przebiegu.', 'Execution point presence and timing only; variable values and configuration are not compared. Missing records cannot confirm a complete execution.'],
+      threshold: ['Próg czasu: co najmniej 20 ms; stosunek 1,25 (25% później/wolniej, 20% wcześniej/szybciej; Analyzer).', 'Timing threshold: at least 20 ms; ratio 1.25 (25% later/slower, 20% earlier/faster; Analyzer).'],
+      order: ['Pierwsza = najwcześniejszy zapisany punkt od początku wykonania w jednym z tych śladów.', 'First = the earliest recorded elapsed execution point in either trace.'],
+      timeout: ['Upłynął limit 10 s. Ponów porównanie.', 'The 10 s limit expired. Retry comparison.'],
+      offline: ['Brak połączenia z Home Assistant.', 'No connection to Home Assistant.']
+    };
+    return labels[key]?.[this._lang === 'pl' ? 0 : 1] || labels.unavailable[this._lang === 'pl' ? 0 : 1];
+  }
+
+  _comparisonIdentity(run) {
+    return JSON.stringify([run.item_id, run.id]);
+  }
+
+  _invalidateComparison(clearSelection = false) {
+    this._comparisonEpoch++;
+    this._comparisonController?.abort();
+    this._comparisonController = null;
+    this._comparisonPending = null;
+    this._comparisonView = null;
+    this._comparisonMessage = null;
+    if (clearSelection) {
+      this._comparisonSourceEpoch++;
+      this._comparisonRuns.clear();
+    }
+  }
+
+  _ensureComparisonLifecycle() {
+    if (!this._comparisonOfflineHandler) {
+      this._comparisonOfflineHandler = () => { this._comparisonOffline = true; this._invalidateComparison(true); this.render(); };
+      this._comparisonOnlineHandler = () => { this._comparisonOffline = false; this._invalidateComparison(true); this.render(); };
+      window.addEventListener('offline', this._comparisonOfflineHandler);
+      window.addEventListener('online', this._comparisonOnlineHandler);
+    }
+    const connection = this._hass?.connection;
+    if (connection === this._comparisonConnection) return;
+    this._comparisonConnection?.removeEventListener?.('disconnected', this._comparisonDisconnectedHandler);
+    this._comparisonConnection?.removeEventListener?.('ready', this._comparisonReadyHandler);
+    this._comparisonConnection = connection;
+    this._comparisonTransportOffline = connection?.connected === false;
+    this._comparisonDisconnectedHandler = () => { this._comparisonTransportOffline = true; this._invalidateComparison(true); this.render(); };
+    this._comparisonReadyHandler = () => { this._comparisonTransportOffline = false; this._invalidateComparison(true); this.render(); };
+    connection?.addEventListener?.('disconnected', this._comparisonDisconnectedHandler);
+    connection?.addEventListener?.('ready', this._comparisonReadyHandler);
+  }
+
+  _toggleComparisonRun(run) {
+    if (!this._hass?.user?.is_admin || typeof run?.item_id !== 'string' || !run.item_id
+      || typeof run?.id !== 'string' || !run.id || !Number.isFinite(+run.timestamp)) return;
+    const key = this._comparisonIdentity(run);
+    if (this._comparisonRuns.has(key)) {
+      this._invalidateComparison(); this._comparisonRuns.delete(key);
+    } else if (this._comparisonRuns.size < 2) {
+      this._invalidateComparison();
+      this._comparisonRuns.set(key, { id: run.id, item_id: run.item_id,
+        timestamp: new Date(+run.timestamp), automationName: String(run.automationName || run.item_id) });
+    } else this._comparisonMessage = 'limit';
+    this.render();
+    const focus = Array.from(this.shadowRoot.querySelectorAll('[data-compare-run], [data-remove-comparison]'))
+      .find(button => button.dataset.compareRun === key || button.dataset.removeComparison === key)
+      || this.shadowRoot.querySelector('[data-remove-comparison], [data-compare-run], .comparison-picker');
+    focus?.focus({ preventScroll: true });
+  }
+
+  _orderedComparisonRuns() {
+    return [...this._comparisonRuns.values()].sort((a, b) => +a.timestamp - +b.timestamp
+      || (this._comparisonIdentity(a) < this._comparisonIdentity(b) ? -1 : 1));
+  }
+
+  async _loadComparisonRun(run, hass, signal) {
+    const detail = this.traceDetail;
+    const loaded = this._comparisonDetailSourceEpoch === this._comparisonSourceEpoch
+      && detail?.trace && this._comparisonIdentity(detail.trace) === this._comparisonIdentity(run)
+      && !detail.unavailable;
+    const capability = loaded
+      ? tvTraceContract.normalizeFull(detail.rawData, { expectedItemId: run.item_id })
+      : await tvTraceContract.requestFull({ hass, itemId: run.item_id, runId: run.id, signal });
+    // Analyzer validates item_id; the consuming card also checks the exact requested run_id.
+    if (capability.status === 'available' && (capability.data.run_id !== run.id || capability.data.item_id !== run.item_id)) {
+      return { status: 'malformed' };
+    }
+    return capability;
+  }
+
+  _compareSelectedRuns() {
+    if (this._comparisonPending) return this._comparisonPending;
+    const runs = this._orderedComparisonRuns();
+    if (runs.length !== 2 || !this._hass?.user?.is_admin) return Promise.resolve();
+    const failure = message => {
+      this._comparisonView = { runs, result: { status: 'unavailable' }, message };
+      this.render(); this.shadowRoot.querySelector('#comparisonHeading')?.focus({ preventScroll: true });
+      return Promise.resolve();
+    };
+    if (runs[0].item_id !== runs[1].item_id) return failure('different');
+    if (this._comparisonOffline || this._comparisonTransportOffline || this._hass.connection?.connected === false) return failure('offline');
+    const epoch = this._comparisonEpoch, access = this._accessEpoch, hass = this._hass;
+    const userId = hass.user.id, connection = hass.connection;
+    const controller = new AbortController(); this._comparisonController = controller;
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; controller.abort(); }, 10000);
+    this._comparisonView = { runs, result: null }; this.render();
+    this.shadowRoot.querySelector('#comparisonHeading')?.focus({ preventScroll: true });
+    let pending;
+    pending = (async () => {
+      try {
+        const capabilities = await Promise.all(runs.map(run => this._loadComparisonRun(run, hass, controller.signal)));
+        if (epoch !== this._comparisonEpoch || access !== this._accessEpoch
+          || this._hass?.connection !== connection || this._hass?.user?.id !== userId
+          || !this._hass?.user?.is_admin || this._comparisonOffline || this._comparisonTransportOffline || this._hass?.connection?.connected === false) return;
+        const failed = capabilities.find(capability => capability.status !== 'available');
+        let result;
+        if (timedOut) result = { status: 'unavailable' };
+        else if (failed) result = { status: failed.status };
+        else if (capabilities.some(capability => capability.data.kind !== 'execution' || !capability.data.nodes.length)) result = { status: 'no_data' };
+        else {
+          result = tvTraceContract.compare(capabilities[0].data, capabilities[1].data);
+          if (result.status === 'available' && capabilities.some(capability => capability.data.run_state !== 'stopped'
+            || capability.data.run_duration_ms === null)) result = { ...result, status: 'unconfirmed' };
+        }
+        // Retain normalized allowlisted data only. Raw trace/config/variables never enter comparison state/DOM.
+        this._comparisonView = { runs, result, message: timedOut ? 'timeout' : null,
+          data: capabilities.every(capability => capability.status === 'available') ? capabilities.map(capability => capability.data) : null };
+        const focused = this.shadowRoot.activeElement;
+        const restoreFocus = focused && this.shadowRoot.querySelector('#traceComparison')?.contains(focused);
+        this.render();
+        if (restoreFocus) this.shadowRoot.querySelector('#comparisonHeading')?.focus({ preventScroll: true });
+      } catch (_error) {
+        if (epoch === this._comparisonEpoch && access === this._accessEpoch) {
+          this._comparisonView = { runs, result: { status: 'unavailable' } }; this.render();
+        }
+      } finally {
+        clearTimeout(timer);
+        if (this._comparisonPending === pending) this._comparisonPending = null;
+        if (this._comparisonController === controller) this._comparisonController = null;
+      }
+    })();
+    this._comparisonPending = pending;
+    return pending;
+  }
+
+  _comparisonPoints(view) {
+    if (!view.result?.data || !view.data) return [];
+    // Presentation ordering only: Analyzer remains the sole classifier.
+    const recorded = new Map();
+    for (const data of view.data) for (const node of data.nodes) {
+      const key = JSON.stringify([node.path, node.ordinal]);
+      recorded.set(key, Math.min(recorded.get(key) ?? Infinity, node.offset_ms));
+    }
+    return Object.entries(view.result.data.nodes).flatMap(([category, nodes]) => nodes.map(node => ({
+      ...node, category, offset: recorded.get(JSON.stringify([node.path, node.ordinal]))
+    }))).sort((a, b) => a.offset - b.offset || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0) || a.ordinal - b.ordinal);
+  }
+
+  _renderComparisonPicker() {
+    const runs = this._orderedComparisonRuns();
+    return `<section class="comparison-picker" tabindex="-1" aria-label="${this._comparisonText('compare')}">
+      <div class="comparison-actions"><button type="button" id="compareRuns" class="comparison-button" ${runs.length !== 2 || !this._hass?.user?.is_admin ? 'disabled' : ''}>${this._comparisonText('compare')} (${runs.length}/2)</button>
+      <span>${this._comparisonText('choose')}</span></div>
+      ${this._comparisonMessage ? `<p role="status">${this._comparisonText(this._comparisonMessage)}</p>` : ''}
+      <div class="comparison-records">${runs.map((run, index) => `<div class="comparison-record"><strong>${this._comparisonText(index === 0 ? 'baseline' : 'current')}</strong>
+        <span>${_esc(run.automationName)}</span><span>${_esc(run.item_id)} / ${_esc(run.id)}</span><time>${_esc(this._fmtTime(run.timestamp))}</time>
+        <button type="button" class="comparison-button" data-remove-comparison="${_esc(this._comparisonIdentity(run))}" aria-label="${this._comparisonText('remove')}: ${_esc(run.item_id)} / ${_esc(run.id)}">${this._comparisonText('remove')}</button></div>`).join('')}</div>
+    </section>`;
+  }
+
+  _renderComparison() {
+    const view = this._comparisonView;
+    if (!view) return '';
+    const result = view.result;
+    const points = this._comparisonPoints(view);
+    const first = points.find(point => point.category !== 'unchanged');
+    const records = view.runs.map((run, index) => `<div class="comparison-record"><strong>${this._comparisonText(index === 0 ? 'baseline' : 'current')}</strong>
+      <span>${_esc(run.item_id)} / ${_esc(run.id)}</span><time>${_esc(this._fmtTime(run.timestamp))}</time></div>`).join('');
+    const timing = result?.data?.run;
+    return `<section id="traceComparison" class="trace-comparison" role="region" aria-labelledby="comparisonHeading">
+      <div class="comparison-actions"><h3 id="comparisonHeading" tabindex="-1">${this._comparisonText(result?.status || 'loading')}</h3>
+        <button type="button" id="closeComparison" class="comparison-button">${this._comparisonText('close')}</button></div>
+      <div class="comparison-records">${records}</div>
+      <p role="status">${view.message ? this._comparisonText(view.message) : ''}</p>
+      <p>${this._comparisonText('scope')}</p><p>${this._comparisonText('threshold')}</p><p>${this._comparisonText('order')}</p>
+      ${timing ? `<p>${this._comparisonText('run')}: ${timing.delta_ms === null ? this._comparisonText('unknown') : `${this._comparisonText(timing.classification)} (${_esc(timing.delta_ms)} ms)`}</p>` : ''}
+      ${result?.data ? `<div class="comparison-actions">${first ? `<button type="button" id="jumpComparisonDifference" class="comparison-button">${this._comparisonText('jump')}</button>` : `<p>${this._comparisonText('no_difference')}</p>`}</div>
+        <ul class="comparison-points">${points.map(point => `<li ${point === first ? 'id="comparisonFirstDifference" tabindex="-1" class="comparison-first"' : ''}>
+          ${point === first ? `<strong>${this._comparisonText('first')}: </strong>` : ''}<span>${_esc(point.path)} #${point.ordinal + 1}</span>
+          <span>${this._comparisonText(point.category)}</span><span>${_esc(point.offset)} ms${Object.hasOwn(point, 'delta_ms') ? ` (Δ ${_esc(point.delta_ms)} ms)` : ''}</span></li>`).join('')}</ul>` : ''}
+    </section>`;
+  }
+
+  _closeComparison() {
+    this._invalidateComparison(); this.render();
+    this.shadowRoot.querySelector('#compareRuns')?.focus({ preventScroll: true });
+  }
+
   _renderTracesList() {
     if (this.viewMode === 'automations' && !this.selectedAutomation)
       return `<div class="empty"><div class="empty-ico">\u261A</div><div>${this._t('clickAutomationToView')}</div></div>`;
@@ -1578,6 +2599,7 @@ class HATraceViewer extends HTMLElement {
     return `
       <div class="tr-item ${sel ? 'sel' : ''} ${chk ? 'chk' : ''} s-${t.status}" data-trace="${t.id}">
         ${this.selectMode ? `<span class="tr-cb" data-tcheck="${t.id}">${chk ? '\u2611' : '\u2610'}</span>` : ''}
+        <button type="button" class="comparison-toggle" data-compare-run="${_esc(this._comparisonIdentity(t))}" aria-pressed="${this._comparisonRuns.has(this._comparisonIdentity(t))}" aria-label="${this._comparisonText('select')}: ${_esc(t.item_id)} / ${_esc(t.id)}">${this._comparisonRuns.has(this._comparisonIdentity(t)) ? '☑' : '☐'}</button>
         <span class="tr-ico s-${t.status}">${this._ico(t.status)}</span>
         <div class="tr-info">
           ${showName ? `<div class="tr-auto">${_esc(t.automationName)}</div>` : ''}
@@ -1690,6 +2712,7 @@ class HATraceViewer extends HTMLElement {
 
   render() {
     if (!this._hass) return;
+    this._ensureComparisonLifecycle();
     if (!this._hass.user?.is_admin) {
       const message = this._lang === 'pl'
         ? 'Ślady automatyzacji są dostępne tylko dla administratora Home Assistant.'
@@ -1789,6 +2812,7 @@ class HATraceViewer extends HTMLElement {
               <span class="pan-title">${this.viewMode === 'all-traces' ? this._t('allTraces') : this._t('traces')}</span>
               ${this.viewMode === 'all-traces' ? `<input type="text" class="sinput-sm" id="trSearch" placeholder="${this._t('searchTraces')}" value="${this._escHtml(this.searchQuery)}" />` : ''}
             </div>
+            ${this._renderComparisonPicker()}
             ${this._renderTracesList()}
           </div>
 
@@ -1796,6 +2820,7 @@ class HATraceViewer extends HTMLElement {
             ${this._renderDetail()}
           </div>
         </div>
+        ${this._renderComparison()}
         ${this._hass?.user?.is_admin && this.config?.show_support !== false && !this._supportDismissed() ? `<div class="donate-section" data-source="own-card" style="margin:8px 0 0;padding:4px 0;background:none;border:0;box-shadow:none;min-height:0;display:flex;gap:8px;align-items:center;flex-wrap:wrap;flex-direction:row;justify-content:flex-start;text-align:left"><a href="https://buymeacoffee.com/macsiem" target="_blank" rel="noopener noreferrer" style="font-size:11px;color:var(--secondary-text-color,#64748b);font-weight:400;text-decoration:underline">${this._lang === 'pl' ? 'Dobrowolne wsparcie HA Tools' : 'Optional support for HA Tools'}</a><button type="button" class="support-dismiss" aria-label="${this._lang === 'pl' ? 'Ukryj link wsparcia' : 'Dismiss support link'}" style="margin-left:auto;padding:2px 6px;min-height:0;line-height:1;border:0;background:none;color:var(--secondary-text-color,#64748b);cursor:pointer">×</button></div>` : ''}
       </div>
     </div>`;
@@ -1832,6 +2857,25 @@ class HATraceViewer extends HTMLElement {
     });
     const $ = s => this.shadowRoot.querySelector(s);
     const $$ = s => this.shadowRoot.querySelectorAll(s);
+
+    $('#compareRuns')?.addEventListener('click', () => this._compareSelectedRuns());
+    $$('[data-compare-run]').forEach(button => button.addEventListener('click', event => {
+      event.stopPropagation();
+      const run = [...this.traces, ...this._allFlatTraces].find(run => this._comparisonIdentity(run) === button.dataset.compareRun);
+      if (run) this._toggleComparisonRun(run);
+    }));
+    $$('[data-remove-comparison]').forEach(button => button.addEventListener('click', () => {
+      const run = this._comparisonRuns.get(button.dataset.removeComparison);
+      if (run) this._toggleComparisonRun(run);
+    }));
+    $('#closeComparison')?.addEventListener('click', () => this._closeComparison());
+    $('#traceComparison')?.addEventListener('keydown', event => {
+      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); this._closeComparison(); }
+    });
+    $('#jumpComparisonDifference')?.addEventListener('click', () => {
+      const first = $('#comparisonFirstDifference'); first?.focus({ preventScroll: true });
+      first?.scrollIntoView?.({ block: 'nearest' });
+    });
 
     // Trace storage info badge -- navigate to panel Settings >
     $('#traceStorageInfo')?.addEventListener('click', () => {
@@ -1983,6 +3027,21 @@ class HATraceViewer extends HTMLElement {
 
   _css() {
     return `<style>${haToolsBentoCSS}
+
+.comparison-picker, .trace-comparison { container-type: inline-size; min-width: 0; max-width: 100%; padding: 12px; box-sizing: border-box; }
+.trace-comparison { border: 1px solid var(--bento-border); border-radius: 12px; margin-top: 12px; background: var(--bento-card); }
+.comparison-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.comparison-actions > * { min-width: 0; overflow-wrap: anywhere; }
+.comparison-button, .comparison-toggle { min-width: 44px; min-height: 44px; padding: 8px 12px; border: 1px solid var(--bento-border); border-radius: 8px; background: var(--bento-bg-2); color: var(--bento-text); cursor: pointer; font: inherit; white-space: normal; overflow-wrap: anywhere; }
+.comparison-button:disabled { cursor: default; opacity: .55; }
+.comparison-toggle { flex: 0 0 44px; padding: 8px; }
+.comparison-toggle[aria-pressed="true"] { border-color: var(--bento-primary); background: var(--bento-primary-light); }
+.comparison-records { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 8px 0; }
+.comparison-record { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 8px; border: 1px solid var(--bento-border); border-radius: 8px; overflow-wrap: anywhere; }
+.comparison-points { padding: 0; margin: 8px 0; list-style: none; }
+.comparison-points li { display: flex; gap: 8px; flex-wrap: wrap; padding: 12px; overflow-wrap: anywhere; }
+.comparison-first { border: 2px solid var(--bento-primary); border-radius: 8px; background: var(--bento-primary-light); }
+@container (max-width: 500px) { .comparison-records { grid-template-columns: minmax(0, 1fr); } .comparison-points li { flex-direction: column; } }
 /* === HA Tools split — premium banners (donate / intro / prereq) === */
 
 /* Donation footer — diamond top */
@@ -2523,6 +3582,13 @@ class HATraceViewer extends HTMLElement {
     this._resizeObserver.observe(this);
   }
   disconnectedCallback() {
+    this._invalidateComparison(true);
+    window.removeEventListener('offline', this._comparisonOfflineHandler);
+    window.removeEventListener('online', this._comparisonOnlineHandler);
+    this._comparisonOfflineHandler = null; this._comparisonOnlineHandler = null;
+    this._comparisonConnection?.removeEventListener?.('disconnected', this._comparisonDisconnectedHandler);
+    this._comparisonConnection?.removeEventListener?.('ready', this._comparisonReadyHandler);
+    this._comparisonConnection = null;
     this._accessEpoch++; this._traceLoadToken = null; this._detailLoadToken = null;
     // Canceled requests cannot finish their loading state after reconnection.
     // Keep completed details, but clear a selection whose request was canceled.
