@@ -247,3 +247,19 @@ test('long comparisons page all recorded points and jump directly to the first d
   viewer.shadowRoot.querySelector('#comparisonPrevious').click();assert.equal(points().length,50);
   assert.equal(viewer.shadowRoot.activeElement.id,'comparisonPrevious');assert.equal(reads,2);
 });
+
+// W6 comparison export consumes only the currently normalized pair, never trace/get.
+test('comparison W6 exports exact first difference/current pair without fetching and aliases paths',async t=>{
+ let reads=0;const {viewer,rows,dom}=fixture(t,undefined,async req=>{reads++;return full(req.run_id,req.item_id,[['private_path/0',req.run_id==='new'?200:100]]);});
+ dom.window.Blob=Blob;let blob;dom.window.URL.createObjectURL=b=>{blob=b;return 'blob:qa';};dom.window.URL.revokeObjectURL=()=>{};dom.window.HTMLAnchorElement.prototype.click=function(){};
+ rows.forEach(r=>select(viewer,r));await viewer._compareSelectedRuns();const original=viewer._comparisonPoints(viewer._comparisonView).find(p=>p.category!=='unchanged');
+ viewer.shadowRoot.querySelector('#exportComparison').click();await new Promise(r=>setImmediate(r));
+ const root=viewer.shadowRoot.querySelector('[data-ha-tools-export]').shadowRoot;const get=k=>root.querySelector(`[data-export="${k}"]`);
+ const preview=get('preview').textContent,data=JSON.parse(preview);assert.equal(data.scope,'comparison');assert.equal(data.records.length,2);assert.equal(data.comparison.first_difference.category,original.category);assert.equal(data.comparison.first_difference.delta_ms,original.delta_ms);
+ assert.doesNotMatch(preview,/private_path|Synthetic|2026-01-01|"old"|"new"/);assert.equal(reads,2);assert.equal(blob,undefined);get('save').click();await new Promise(r=>setImmediate(r));assert.equal(await blob.text(),preview);assert.equal(reads,2);
+});
+test('comparison W6 clears an open preview when pair changes and refuses unconfirmed source',async t=>{
+ const {viewer,rows}=fixture(t);rows.forEach(r=>select(viewer,r));await viewer._compareSelectedRuns();viewer._exportComparison();await new Promise(r=>setImmediate(r));
+ const root=viewer.shadowRoot.querySelector('[data-ha-tools-export]').shadowRoot;select(viewer,rows[0]);assert.equal(root.querySelector('[data-export="preview"]').textContent,'');assert.equal(root.querySelector('[data-export="save"]').disabled,true);
+ root.querySelector('[data-export="cancel"]').click();viewer._comparisonView={runs:rows,result:{status:'available',data:{}},data:null};viewer._exportComparison();assert.equal(viewer.shadowRoot.querySelector('[data-ha-tools-export]'),null);
+});
