@@ -98,7 +98,7 @@ test('W6 unresolved handoff remains latched across cancel and reopen',async()=>{
 });
 
 test('W6 closing an expired comparison returns focus to the surviving export toolbar', async t => {
- const {card,dom}=setup(t);card.render();
+ const f=fixture();t.after(f.close);const {card}=f;card.render();
  const opener=card._exportOpener('comparison');
  opener.focus();
  assert.equal(card.shadowRoot.activeElement,card.shadowRoot.querySelector('#expBtn'));
