@@ -2370,12 +2370,12 @@ class HATraceViewer extends HTMLElement {
 
   _fmtTime(d) {
     if (!d || !Number.isFinite(+d)) return this._lang === 'pl' ? 'Brak daty' : 'Date unavailable';
-    return d.toLocaleString(undefined, { month: 'long', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    return d.toLocaleString(this._lang === 'pl' ? 'pl-PL' : 'en-US', { month: 'long', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
   }
 
   _fmtTimeShort(d) {
     if (!d || !Number.isFinite(+d)) return this._lang === 'pl' ? 'Brak daty' : 'Date unavailable';
-    return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    return d.toLocaleTimeString(this._lang === 'pl' ? 'pl-PL' : 'en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   }
 
   // ============================================================

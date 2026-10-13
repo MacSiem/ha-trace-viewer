@@ -227,6 +227,10 @@ test('live locale change translates the open detail without refetching or changi
   const result = card.shadowRoot.querySelector('.tl-step.s-unconfirmed');
   assert.match(result.textContent, /Niepotwierdzony.*Zakończono o/);
   assert.doesNotMatch(result.textContent, /Unconfirmed|Finished at/);
+  // Native Chrome with an English browser also exposed English month/AM-PM in PL.
+  assert.match(result.textContent, /stycznia/);
+  assert.doesNotMatch(result.textContent, /January|AM|PM/);
+  assert.doesNotMatch(card._fmtTimeShort(row.timestamp), /AM|PM/);
   assert.equal(card.selectedTrace, row.id);
   assert.equal(card.traceDetail.rawData, sourceDetail);
   assert.equal(JSON.stringify(sourceDetail), serialized);
