@@ -2924,7 +2924,11 @@ class HATraceViewer extends HTMLElement {
   _exportOpener(scope) {
     // Stable focus proxy resolves the replacement toolbar button after card repaint.
     return { get isConnected() { return true; }, focus: () => {
-      if (this.isConnected) this.shadowRoot.querySelector(scope === 'comparison' ? '#exportComparison' : '#expBtn')?.focus({ preventScroll: true });
+      if (this.isConnected) {
+        const target = (scope === 'comparison' && this.shadowRoot.querySelector('#exportComparison'))
+          || this.shadowRoot.querySelector('#expBtn');
+        target?.focus({ preventScroll: true });
+      }
     } };
   }
 
