@@ -2,6 +2,350 @@
 (function() {
 'use strict';
 
+// BEGIN HA TOOLS UI V3 source-sha256=029c06206e55abad9aa09dfcf65bb13027ec24ce6a0bfacc45a938891b27254e
+// HA Tools v3: vendored inside each consumer's own closure, never a window API.
+function createUiV3({ language = 'en' } = {}) {
+  const pl = String(language).startsWith('pl');
+  const states = {
+    success: ['Success', 'Sukces', '✓'],
+    partial: ['Partial', 'Częściowo', '½'],
+    unconfirmed: ['Unconfirmed', 'Niepotwierdzony', '?'],
+    error: ['Error', 'Błąd', '✕'],
+    not_checked: ['Not checked', 'Nie sprawdzono', '–'],
+    no_data: ['No data', 'Brak danych', '∅'],
+  };
+  const status = (value) => {
+    const code = typeof value === 'string' && Object.hasOwn(states, value) ? value : 'not_checked';
+    const row = states[code];
+    return { code, label: row[pl ? 1 : 0], icon: row[2], countsAsSuccess: code === 'success' };
+  };
+  const statusHtml = (value) => {
+    const result = status(value);
+    return `<span class="ht-result-state ht-result-state--${result.code}" data-result-state="${result.code}"><span aria-hidden="true">${result.icon}</span> ${result.label}</span>`;
+  };
+  const css = `
+.ht-result-state { display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border:1px solid currentColor;border-radius:6px;font-size:12px;line-height:1.4;white-space:normal; }
+.ht-result-state--success { color:#237b3d;background:rgba(35,123,61,.10); }
+.ht-result-state--partial { color:#966400;background:rgba(150,100,0,.10); }
+.ht-result-state--unconfirmed { color:#ad5200;background:rgba(173,82,0,.10); }
+.ht-result-state--error { color:#c32b2b;background:rgba(195,43,43,.10); }
+.ht-result-state--not_checked,.ht-result-state--no_data { color:var(--secondary-text-color,#666);background:transparent; }
+.ht-result-state--no_data { border-style:dashed; }
+:host(.bento-dark) .ht-result-state--success { color:#81cf99; }
+:host(.bento-dark) .ht-result-state--partial { color:#efd080; }
+:host(.bento-dark) .ht-result-state--unconfirmed { color:#ffb97b; }
+:host(.bento-dark) .ht-result-state--error { color:#ff9999; }
+`;
+  return { status, statusHtml, css };
+}
+// END HA TOOLS UI V3
+
+// BEGIN HA TOOLS EXPORT V3 source-sha256=1f9e9c5444ec3b6de44eec136f14ae9e7d89dae1002650b33f746ab9633982f1
+/**
+ * W6 export dialog. Pure ES module; vendor this factory INSIDE each consumer's
+ * own IIFE (remove only the `export` keyword). Never attach it to window.
+ * Construction is inert. open() appends only its own container to root.
+ *
+ * Required dependency injection:
+ * root: Element/ShadowRoot; getLanguage(): 'pl'|'en'; createUiV3: existing W4 factory.
+ * getContext(): {role,userId,connectionId,datasetId,revision,connected,canExport,
+ *                sourceConfirmed}. Identities/revision are nonempty scalar values;
+ * bump revision monotonically for source/filter/selection/identity changes,
+ * including a restored source; never reuse an old revision. Never return tokens or data.
+ * policy: {id,allowlistedFields:string[],neverInclude:[tokens,users,addresses,raw_config]}.
+ * formats: explicit subset of ['json','csv','txt']; defaults must be explicit valid choices.
+ * buildPayload({context,draft,policy,signal}): read-only, Promise or sync result:
+ * {serialized:string,confirmed:true,sourceConfirmed:true,status:'success'|'partial',
+ *  included:string[],excluded:string[],sourceLimit:string}.
+ * Included/Excluded/sourceLimit describe the REVIEWED CONSUMER policy and actual
+ * source limitations in the current language. The consumer MUST explicitly select
+ * allowed fields, exclude tokens/users/addresses/raw configuration under EVERY
+ * private opt-in, and sanitize CSV formula cells where applicable. A generic
+ * recursive export/redactor of arbitrary raw state/config is NOT a valid consumer.
+ * This factory cannot inspect or truthfully sanitize an unknown arbitrary schema.
+ * For partial reports the consumer also encodes the partial status, inclusion
+ * scope and source limitations IN its allowlisted file schema, not only UI text.
+ * performDownload({serialized,blob,filename,format,context,signal}): explicit Save
+ * only. Return {outcome:'initiated'|'saved'|'unknown'}; 'saved' requires actual
+ * adapter confirmation, never infer disk persistence from an anchor click.
+ * Optional clock(): monotonic milliseconds; setTimer(fn,ms), clearTimer(handle).
+ *
+ * Returned API: open({opener}), cancel(), contextChanged(), destroy(). Every open
+ * resets private consent. contextChanged() discards bytes/consent immediately;
+ * owner also calls cancel/destroy on disconnect. Save ALWAYS rechecks context.
+ * One preview on open, explicit Refresh thereafter; bounded 10s, no automatic
+ * retries/downloads/persistence. AbortSignal is advisory; late results are ignored.
+ */
+function createExportDialog(options) {
+  const { root, getContext, getLanguage, createUiV3, buildPayload, performDownload,
+    clock = () => globalThis.performance.now(), setTimer = (fn, ms) => globalThis.setTimeout(fn, ms),
+    clearTimer = id => globalThis.clearTimeout(id), defaultFormat, defaultFilename } = options || {};
+  const allowedFormats = ['json', 'csv', 'txt', 'yaml'];
+  const excludedCategories = ['tokens', 'users', 'addresses', 'raw_config'];
+  const strings = value => Array.isArray(value) && value.length > 0 && value.every(v => typeof v === 'string' && v.trim());
+  if (!root?.append || !root.ownerDocument || [getContext, getLanguage, createUiV3, buildPayload, performDownload, clock, setTimer, clearTimer].some(fn => typeof fn !== 'function')) {
+    throw new TypeError('root and injected getContext/getLanguage/createUiV3/buildPayload/performDownload/clock/timers are required');
+  }
+  const suppliedPolicy = options.policy;
+  if (!suppliedPolicy || typeof suppliedPolicy.id !== 'string' || !suppliedPolicy.id.trim() || !strings(suppliedPolicy.allowlistedFields) || !strings(suppliedPolicy.neverInclude) || excludedCategories.some(key => !suppliedPolicy.neverInclude.includes(key))) {
+    throw new TypeError('Explicit reviewed consumer policy with allowlistedFields and neverInclude is required');
+  }
+  const policy = Object.freeze({ id: suppliedPolicy.id, allowlistedFields: Object.freeze([...suppliedPolicy.allowlistedFields]), neverInclude: Object.freeze([...suppliedPolicy.neverInclude]) });
+  if (!strings(options.formats) || options.formats.some(f => !allowedFormats.includes(f)) || new Set(options.formats).size !== options.formats.length || !options.formats.includes(defaultFormat) || typeof defaultFilename !== 'string') {
+    throw new TypeError('Explicit formats/defaultFormat/defaultFilename are required');
+  }
+  const formats = Object.freeze([...options.formats]);
+  const doc = root.ownerDocument;
+  const mime = { json: 'application/json;charset=utf-8', csv: 'text/csv;charset=utf-8', txt: 'text/plain;charset=utf-8', yaml: 'application/yaml;charset=utf-8' };
+  const copy = {
+    en: { title: 'Export', filename: 'Filename', format: 'Format', private: 'Include reviewed private fields (this export only)', included: 'Included in the file', excluded: 'Excluded from the file', source: 'Source and limits', preview: 'Exact file content', save: 'Save', refresh: 'Refresh preview', cancel: 'Cancel', busy: 'Building preview… Save waits for confirmed bytes.', changed: 'Choices changed. Refresh preview before Save.', context: 'Source or access changed. Review the source and refresh preview.', unavailable: 'Source unavailable or unconfirmed. Reconnect or confirm the source, then refresh.', invalidFormat: 'Choose an allowed format: JSON, CSV, TXT or YAML as offered.', invalidName: 'Use a basename of 1–128 characters: no paths, control characters, reserved names or leading/trailing spaces.', extension: 'Filename must end with the selected extension. Edit the filename, then refresh.', timeout: 'Preview exceeded 10 seconds. Check the source and explicitly refresh.', buildError: 'Could not build a confirmed preview. Check the source and refresh.', unconfirmed: 'Bytes or source metadata are unconfirmed. Confirm the source and refresh.', noData: 'No confirmed file content. Select available data and refresh.', saving: 'Handing off the confirmed preview… Wait for the adapter result.', initiated: 'Download initiated. Saving to the filesystem is not confirmed. Refresh only for a new export intent.', saved: 'Save confirmed by the download adapter.', unknown: 'Download result unconfirmed. Check the previous attempt before explicitly refreshing for a new export intent.' },
+    pl: { title: 'Eksport', filename: 'Nazwa pliku', format: 'Format', private: 'Dołącz sprawdzone pola prywatne (tylko ten eksport)', included: 'W pliku jest', excluded: 'W pliku nie ma', source: 'Źródło i ograniczenia', preview: 'Dokładna zawartość pliku', save: 'Zapisz', refresh: 'Odśwież podgląd', cancel: 'Anuluj', busy: 'Przygotowywanie podglądu… Zapis wymaga potwierdzonej zawartości.', changed: 'Wybór zmieniony. Odśwież podgląd przed zapisem.', context: 'Źródło lub uprawnienia zmienione. Sprawdź źródło i odśwież podgląd.', unavailable: 'Źródło niedostępne lub niepotwierdzone. Połącz lub potwierdź źródło i odśwież.', invalidFormat: 'Wybierz dostępny format: JSON, CSV, TXT lub YAML z listy.', invalidName: 'Użyj nazwy pliku o długości 1–128 znaków: bez ścieżek, znaków sterujących, nazw zastrzeżonych i skrajnych spacji.', extension: 'Nazwa pliku musi mieć rozszerzenie wybranego formatu. Popraw nazwę i odśwież.', timeout: 'Podgląd przekroczył 10 sekund. Sprawdź źródło i jawnie odśwież.', buildError: 'Nie udało się przygotować potwierdzonego podglądu. Sprawdź źródło i odśwież.', unconfirmed: 'Zawartość lub opis źródła niepotwierdzony. Potwierdź źródło i odśwież.', noData: 'Brak potwierdzonej zawartości pliku. Wybierz dostępne dane i odśwież.', saving: 'Przekazywanie potwierdzonego podglądu… Poczekaj na wynik zapisu.', initiated: 'Pobieranie rozpoczęte. Zapis na dysku nie jest potwierdzony. Odśwież tylko dla nowej próby eksportu.', saved: 'Adapter pobierania potwierdził zapis.', unknown: 'Wynik pobierania niepotwierdzony. Sprawdź poprzednią próbę przed jawnym odświeżeniem dla nowego eksportu.' },
+  };
+  const css = `
+[data-ha-tools-export] { container-type:inline-size;min-width:0;max-width:100%;color:var(--primary-text-color,inherit);font:inherit; }
+[data-ha-tools-export] * { box-sizing:border-box; }
+[data-ha-tools-export] [role=dialog] { width:100%;min-width:0;border:1px solid var(--divider-color,#aaa);border-radius:12px;background:var(--card-background-color,#fff);padding:16px; }
+[data-ha-tools-export] h2,[data-ha-tools-export] h3,[data-ha-tools-export] p,[data-ha-tools-export] li { overflow-wrap:anywhere;white-space:normal; }
+[data-ha-tools-export] h2 { margin:0 0 12px;font-size:1.25em; }
+[data-ha-tools-export] h3 { margin:12px 0 6px;font-size:1em; }
+[data-ha-tools-export] .ht-export-fields { display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px; }
+[data-ha-tools-export] label { display:flex;flex-direction:column;gap:4px;min-width:0;overflow-wrap:anywhere; }
+[data-ha-tools-export] .ht-export-private { flex-direction:row;align-items:center;min-height:44px;margin-top:12px; }
+[data-ha-tools-export] input:not([type=checkbox]),[data-ha-tools-export] select,[data-ha-tools-export] button { font:inherit;min-width:44px;min-height:44px;max-width:100%; }
+[data-ha-tools-export] input:not([type=checkbox]),[data-ha-tools-export] select { width:100%;color:inherit;background:var(--secondary-background-color,var(--card-background-color,#f5f5f5));border:1px solid var(--divider-color,#aaa);border-radius:6px;padding:8px; }
+[data-ha-tools-export] input[type=checkbox] { width:24px;height:24px;flex:none;margin:10px; }
+[data-ha-tools-export] button { padding:8px 12px;white-space:normal;overflow-wrap:anywhere;cursor:pointer;border:1px solid var(--divider-color,#aaa);border-radius:6px;color:inherit;background:var(--secondary-background-color,var(--card-background-color,#f5f5f5)); }
+[data-ha-tools-export] :focus-visible { outline:3px solid var(--primary-color,#1769aa);outline-offset:2px; }
+[data-ha-tools-export] button:disabled { cursor:default;opacity:.6; }
+[data-ha-tools-export] .ht-export-actions { display:flex;flex-wrap:wrap;gap:8px;margin-top:16px; }
+[data-ha-tools-export] pre { max-width:100%;min-width:0;max-height:320px;overflow:auto;white-space:pre;margin:0;padding:12px;border:1px solid var(--divider-color,#aaa);background:var(--secondary-background-color,var(--card-background-color,#f5f5f5)); }
+[data-ha-tools-export] ul { padding-inline-start:22px;margin:0; }
+@container (max-width:499px) { [data-ha-tools-export] .ht-export-fields { grid-template-columns:minmax(0,1fr); } }
+@container (max-width:319px) { [data-ha-tools-export] [role=dialog] { padding:10px; } [data-ha-tools-export] .ht-export-actions button { flex:1 1 100%; } }
+`;
+  let container, nodes, L, ui, opener, alive = false, destroyed = false, serial = 0;
+  let pending = null, handoff = null, ready = null, observed = null;
+  const listeners = [];
+  const on = (target, event, handler, capture = false) => {
+    target.addEventListener(event, handler, capture);
+    listeners.push(() => target.removeEventListener(event, handler, capture));
+  };
+  const contextKeys = ['role', 'userId', 'connectionId', 'datasetId', 'revision'];
+  function readContext() {
+    try {
+      const value = getContext();
+      if (!value || contextKeys.some(k => !['string', 'number'].includes(typeof value[k]) || String(value[k]).trim() === '' || (typeof value[k] === 'number' && !Number.isFinite(value[k])))) return null;
+      return Object.freeze(Object.fromEntries([...contextKeys, 'connected', 'canExport', 'sourceConfirmed'].map(k => [k, value[k]])));
+    } catch { return null; }
+  }
+  const same = (a, b) => !!a && !!b && [...contextKeys, 'connected', 'canExport', 'sourceConfirmed'].every(k => a[k] === b[k]);
+  const available = c => !!c && c.connected === true && c.canExport === true && c.sourceConfirmed === true;
+  const draft = () => Object.freeze({ filename: nodes.filename.value, format: nodes.format.value, includePrivate: nodes.private.checked });
+  const sameDraft = (a, b) => a.filename === b.filename && a.format === b.format && a.includePrivate === b.includePrivate;
+  function validation(value) {
+    if (!formats.includes(value.format)) return 'invalidFormat';
+    const name = value.filename;
+    if (!name || [...name].length > 128 || name !== name.trim() || /[\p{Cc}\p{Cf}/\\<>:"|?*]/u.test(name) || /[. ]$/.test(name) || /^(con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³])(?:\.|$)/i.test(name)) return 'invalidName';
+    if (!name.endsWith(`.${value.format}`) || name.length <= value.format.length + 1) return 'extension';
+    return null;
+  }
+  function status(code, message) {
+    if (!alive) return;
+    const result = ui.status(code); // exact existing W4 labels/icons/codes
+    nodes.status.className = `ht-result-state ht-result-state--${result.code}`;
+    nodes.status.dataset.resultState = result.code;
+    nodes.status.replaceChildren();
+    const icon = doc.createElement('span'); icon.setAttribute('aria-hidden', 'true'); icon.textContent = result.icon;
+    nodes.status.append(icon, doc.createTextNode(` ${result.label}`));
+    nodes.message.textContent = ` ${L[message]}`;
+    nodes.save.disabled = !ready || !!pending || !!handoff;
+    nodes.refresh.disabled = !!pending || !!handoff;
+  }
+  function stop(job) {
+    if (!job) return;
+    if (job.timer !== null) clearTimer(job.timer);
+    job.timer = null; job.controller.abort();
+  }
+  function discard(resetPrivate = false) {
+    serial++; stop(pending); pending = null; ready = null;
+    if (alive) {
+      nodes.preview.textContent = ''; nodes.included.replaceChildren(); nodes.excluded.replaceChildren(); nodes['source-limit'].textContent = '';
+      if (resetPrivate) nodes.private.checked = false;
+    }
+  }
+  function contextChanged() {
+    if (!alive) return;
+    observed = readContext(); discard(true);
+    // Once a handoff began we cannot retract a browser download. Ignore its late
+    // callback and retain the prohibition on a second write until it settles.
+    if (handoff) handoff.controller.abort();
+    status(root.isConnected && available(observed) ? 'unconfirmed' : 'no_data', 'context');
+  }
+  function validContext(original) {
+    const current = readContext();
+    if (!root.isConnected || !same(original, current) || !available(current)) { contextChanged(); return false; }
+    return true;
+  }
+  function changeDraft() {
+    if (!alive) return;
+    if (!same(observed, readContext())) { contextChanged(); return; }
+    discard();
+    const error = validation(draft()); status(error ? 'error' : 'not_checked', error || 'changed');
+  }
+  function fillList(node, items) {
+    node.replaceChildren(...items.map(text => { const li = doc.createElement('li'); li.textContent = text; return li; }));
+  }
+  async function refresh() {
+    if (!alive || pending || handoff) return;
+    const current = readContext();
+    if (!same(observed, current)) { observed = current; discard(true); }
+    const value = draft(), error = validation(value);
+    discard();
+    if (error) { status('error', error); return; }
+    if (!root.isConnected || !available(current)) { status(!root.isConnected || current?.connected === false ? 'no_data' : 'unconfirmed', 'unavailable'); return; }
+    observed = current;
+    const job = { id: serial, context: current, draft: value, started: clock(), controller: new globalThis.AbortController(), timer: null };
+    pending = job; status('not_checked', 'busy');
+    const timeout = () => {
+      if (!alive || pending !== job) return;
+      discard(); status('unconfirmed', 'timeout');
+    };
+    job.timer = setTimer(timeout, 10000);
+    try {
+      const payload = await buildPayload(Object.freeze({ context: current, draft: value, policy, signal: job.controller.signal }));
+      if (!alive || pending !== job || job.id !== serial) return;
+      if (clock() - job.started >= 10000) { timeout(); return; }
+      if (!validContext(current)) return;
+      clearTimer(job.timer); job.timer = null;
+      if (!sameDraft(value, draft())) { changeDraft(); return; }
+      const { serialized, confirmed, sourceConfirmed, status: resultState, included, excluded, sourceLimit } = payload || {};
+      if (resultState === 'no_data' || serialized === '') { pending = null; status('no_data', 'noData'); return; }
+      if (confirmed !== true || sourceConfirmed !== true || !['success', 'partial'].includes(resultState) || typeof serialized !== 'string' || !strings(included) || !strings(excluded) || typeof sourceLimit !== 'string' || !sourceLimit.trim()) {
+        pending = null; status('unconfirmed', 'unconfirmed'); return;
+      }
+      // Freeze the only serialized bytes and build the only Blob NOW; Save never
+      // re-runs serialization or builds a second payload from potentially newer data.
+      ready = Object.freeze({ serialized, blob: new globalThis.Blob([serialized], { type: mime[value.format] }), context: current, draft: value });
+      nodes.preview.textContent = ready.serialized;
+      fillList(nodes.included, [...included]); fillList(nodes.excluded, [...excluded]);
+      nodes['source-limit'].textContent = sourceLimit;
+      pending = null; status(resultState, 'changed'); nodes.message.textContent = '';
+    } catch {
+      if (!alive || pending !== job || job.id !== serial) return;
+      if (clock() - job.started >= 10000) { timeout(); return; }
+      if (!validContext(current)) return;
+      discard(); status('error', 'buildError');
+    }
+  }
+  async function save() {
+    if (!alive || !ready || pending || handoff) return;
+    if (!validContext(ready.context)) return;
+    const value = draft(), error = validation(value);
+    if (error || !sameDraft(value, ready.draft) || nodes.preview.textContent !== ready.serialized) {
+      discard(); status(error ? 'error' : 'unconfirmed', error || 'changed'); return;
+    }
+    const snapshot = ready; ready = null; // consume intent BEFORE invoking adapter
+    const job = { id: serial, context: snapshot.context, controller: new globalThis.AbortController() };
+    handoff = job; status('unconfirmed', 'saving');
+    // choices cannot initiate another preview while the adapter result is unknown
+    for (const key of ['filename', 'format', 'private']) nodes[key].disabled = true;
+    try {
+      const result = await performDownload(Object.freeze({ serialized: snapshot.serialized, blob: snapshot.blob, filename: snapshot.draft.filename, format: snapshot.draft.format, context: snapshot.context, signal: job.controller.signal }));
+      if (!alive || handoff !== job || job.id !== serial || !validContext(job.context)) return;
+      status(result?.outcome === 'saved' ? 'success' : 'unconfirmed', result?.outcome === 'saved' ? 'saved' : result?.outcome === 'initiated' ? 'initiated' : 'unknown');
+    } catch {
+      if (alive && handoff === job && job.id === serial && validContext(job.context)) status('unconfirmed', 'unknown');
+    } finally {
+      if (handoff === job) {
+        handoff = null;
+        if (alive) {
+          for (const key of ['filename', 'format', 'private']) nodes[key].disabled = false;
+          nodes.refresh.disabled = false; nodes.save.disabled = true;
+          if (job.id !== serial) status('unconfirmed', 'unknown');
+        }
+      }
+    }
+  }
+  function focusable() {
+    return Array.from(nodes.dialog.querySelectorAll('input,select,button,[tabindex="0"]')).filter(el => !el.disabled);
+  }
+  function keydown(event) {
+    if (!alive) return;
+    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); cancel(); }
+    if (event.key === 'Tab') {
+      const items = focusable(), first = items[0], last = items.at(-1);
+      const active = nodes.dialog.getRootNode().activeElement || root.activeElement || doc.activeElement;
+      if (event.shiftKey && (active === first || !nodes.dialog.contains(active))) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && (active === last || !nodes.dialog.contains(active))) { event.preventDefault(); first?.focus(); }
+    }
+  }
+  function cancel() {
+    if (!alive) return;
+    discard(true); if (handoff) handoff.controller.abort();
+    alive = false; listeners.splice(0).forEach(off => off()); container.remove();
+    container = null; nodes = null; observed = null;
+    // A pending handoff remains latched until settled: reopening never repeats it.
+    if (opener?.isConnected && typeof opener.focus === 'function') opener.focus();
+    opener = null;
+  }
+  function open({ opener: target } = {}) {
+    if (destroyed) throw new Error('Export dialog destroyed');
+    if (alive) return;
+    const language = String(getLanguage());
+    L = copy[language.startsWith('pl') ? 'pl' : 'en'];
+    ui = createUiV3({ language });
+    opener = target || root.activeElement || doc.activeElement;
+    container = doc.createElement('div'); container.setAttribute('data-ha-tools-export', '');
+    // The own shadow boundary contains CSS and local IDs; adjacent W4 status
+    // elements retain their existing styling. Consumers can query this open root.
+    const shadow = container.attachShadow({ mode: 'open' });
+    if (root.host?.classList.contains('bento-dark')) container.classList.add('bento-dark');
+    const style = doc.createElement('style'); style.textContent = ':host{display:block;min-width:0;max-width:100%;}' + css + '\n' + ui.css;
+    shadow.append(style);
+    const shell = doc.createElement('div'); shell.setAttribute('data-ha-tools-export', ''); shadow.append(shell);
+    nodes = {};
+    const make = (tag, key, parent, text) => { const node = doc.createElement(tag); if (key) { node.dataset.export = key; nodes[key] = node; } if (text) node.textContent = text; parent.append(node); return node; };
+    const dialog = make('section', 'dialog', shell); dialog.setAttribute('role', 'dialog'); dialog.setAttribute('aria-modal', 'true');
+    const title = make('h2', 'title', dialog, L.title);
+    // Locally unique IDs, no random or global counters/persistent state.
+    const prefix = `ht-export-${String(clock()).replace(/\W/g, '')}`;
+    title.id = prefix + '-title'; dialog.setAttribute('aria-labelledby', title.id);
+    const fields = make('div', null, dialog); fields.className = 'ht-export-fields';
+    const filenameLabel = make('label', null, fields); make('span', null, filenameLabel, L.filename);
+    const filename = make('input', 'filename', filenameLabel); filename.type = 'text'; filename.value = defaultFilename; filename.autocomplete = 'off';
+    const formatLabel = make('label', null, fields); make('span', null, formatLabel, L.format);
+    const format = make('select', 'format', formatLabel);
+    formats.forEach(value => { const option = make('option', null, format, value.toUpperCase()); option.value = value; }); format.value = defaultFormat;
+    const privateLabel = make('label', null, dialog); privateLabel.className = 'ht-export-private';
+    const privateInput = make('input', 'private', privateLabel); privateInput.type = 'checkbox'; privateInput.checked = false; make('span', null, privateLabel, L.private);
+    const statusLine = make('p', null, dialog); statusLine.setAttribute('role', 'status'); statusLine.setAttribute('aria-live', 'polite');
+    make('span', 'status', statusLine); make('span', 'message', statusLine);
+    for (const key of ['included', 'excluded']) { make('h3', null, dialog, L[key]); make('ul', key, dialog); }
+    make('h3', null, dialog, L.source); make('p', 'source-limit', dialog);
+    const previewHeading = make('h3', null, dialog, L.preview); previewHeading.id = prefix + '-preview';
+    const preview = make('pre', 'preview', dialog); preview.tabIndex = 0; preview.setAttribute('aria-labelledby', previewHeading.id);
+    const actions = make('div', null, dialog); actions.className = 'ht-export-actions';
+    for (const key of ['refresh', 'save', 'cancel']) { const button = make('button', key, actions, L[key]); button.type = 'button'; }
+    root.append(container); alive = true; observed = readContext();
+    for (const [key, event] of [['filename', 'input'], ['format', 'change'], ['private', 'change']]) on(nodes[key], event, changeDraft);
+    on(nodes.refresh, 'click', refresh); on(nodes.save, 'click', save); on(nodes.cancel, 'click', cancel);
+    on(doc, 'keydown', keydown, true);
+    on(doc, 'focusin', event => {
+      if (alive && !event.composedPath().includes(nodes.dialog)) focusable()[0]?.focus();
+    }, true);
+    // The consumer supplies exact opener even when its shadow DOM hides activeElement.
+    filename.focus();
+    if (handoff) {
+      for (const key of ['filename', 'format', 'private']) nodes[key].disabled = true;
+      preview.focus();
+      status('unconfirmed', 'saving');
+    } else { status('not_checked', 'changed'); void refresh(); }
+  }
+  function destroy() { cancel(); destroyed = true; }
+  return Object.freeze({ open, cancel, contextChanged, destroy });
+}
+// END HA TOOLS EXPORT V3
+
 /* BEGIN INLINE shared/ha-tools-trace-contract.js */
 // Vendored from ha-automation-analyzer 14e297fd841ba6838e6ea31e3346d7cf3d887156.
 // Input SHA256: 0f891270a1d1fc04636e1b8752b8a3856371068a3be98a67797639b566b237b3.
@@ -1425,6 +1769,18 @@ class HATraceViewer extends HTMLElement {
     super();
     this._lang = (navigator.language || '').startsWith('pl') ? 'pl' : 'en';
     this.attachShadow({ mode: 'open' });
+    // The export dialog is a stable sibling; ordinary render never detaches it.
+    this._cardSurface = document.createElement('div');
+    this._cardSurface.style.display = 'contents';
+    this.shadowRoot.append(this._cardSurface);
+    this._exportRevision = 0;
+    this._exportSignature = null;
+    this._exportObjectIds = new WeakMap();
+    this._exportObjectSerial = 0;
+    this._exportIntent = null;
+    this._exportDialog = null;
+    this._exportHandoff = null;
+    this._exportLanguage = this._lang;
     this.config = {};
     this._hass = null;
 
@@ -1762,7 +2118,8 @@ class HATraceViewer extends HTMLElement {
     this._hass = hass;
     this._comparisonConnectionState = hass?.connection?.connected;
     this._ensureComparisonLifecycle();
-    if (!hass) { this.shadowRoot.innerHTML = this._css(); return; }
+    this._syncExportContext();
+    if (!hass) { this._cardSurface.innerHTML = this._css(); return; }
     if (firstLoad || roleChanged || sourceChanged) {
       this._allTraces = [];
       this._traceMap = {};
@@ -2342,81 +2699,238 @@ class HATraceViewer extends HTMLElement {
     return '"' + text.replace(/"/g, '""') + '"';
   }
 
-  async _exportDetails(list, access) {
-    const full = [];
-    for (const trace of list) {
-      if (!this._isAdminSession(access)) return null;
-      let detail;
-      try { detail = await this._hass.callWS({ type: 'trace/get', domain: 'automation', item_id: trace.item_id, run_id: trace.id }); }
-      catch (_) { detail = this._storedDetails[trace.item_id + '::' + trace.id] || null; }
-      if (!this._isAdminSession(access)) return null;
-      full.push({ s: trace, d: detail });
+  // W6 exports are local allowlisted snapshots. Neither preview nor Save fetches.
+  _exportRows(scope = this._exportIntent?.scope) {
+    if (scope === 'comparison') return this._comparisonExportable() ? this._comparisonView.runs : [];
+    if (scope === 'automations') {
+      const rows = [];
+      for (const entity of this.selectedAutoIds) {
+        const auto = this._rawAutomations.find(a => a.entity === entity);
+        const aid = this._traceKey(auto?.automationId);
+        if (aid && this._traceMap[aid]) rows.push(...this._traceMap[aid].traces.map(t => this._traceSummary(t, auto, entity, aid)));
+      }
+      return rows;
     }
-    return full;
-  }
-
-  _exportRecord(f, redact, index, names) {
-    if (!redact) return {
-      run_id: f.s.id, item_id: f.s.item_id, automation: f.s.automationName,
-      timestamp: f.s.timestamp.toISOString(), finish: f.s.finishTime?.toISOString(),
-      status: f.s.status, duration_ms: f.s.duration, trigger: f.s.trigger,
-      last_step: f.s.lastStep, detail: f.d
-    };
-    // Allowlist: no raw config, variables, service arguments, names, identifiers,
-    // paths, absolute times or arbitrary strings reach a sharing export.
-    if (!names.has(f.s.item_id)) names.set(f.s.item_id, 'Automation ' + (names.size + 1));
-    const status = ['success', 'error', 'running', 'stopped', 'aborted', 'unknown'].includes(f.s.status) ? f.s.status : 'unknown';
-    return { redacted: true, run_id: 'Run ' + (index + 1), automation: names.get(f.s.item_id),
-      status, duration_ms: Number.isFinite(f.s.duration) ? f.s.duration : null,
-      detail: f.d ? { available: true, step_count: Object.values(f.d.trace || {}).reduce((n, steps) => n + (Array.isArray(steps) ? steps.length : 0), 0) } : null };
-  }
-
-  _downloadExport(full, fmt, grouped, redact, access) {
-    if (!this._isAdminSession(access)) return;
-    const names = new Map();
-    const records = full.map((f, i) => this._exportRecord(f, redact, i, names));
-    let content;
-    if (fmt === 'json') {
-      if (grouped) {
-        const groups = Object.create(null);
-        records.forEach(record => { (groups[record.automation] ||= []).push(record); });
-        content = JSON.stringify(groups, null, 2);
-      } else content = JSON.stringify(records, null, 2);
-    } else {
-      const keys = redact ? ['redacted','run_id','automation','status','duration_ms']
-        : ['run_id','automation','timestamp','status','duration_ms','trigger','last_step'];
-      content = [keys, ...records.map(record => keys.map(key => record[key]))]
-        .map(row => row.map(cell => this._csvCell(cell)).join(',')).join('\r\n');
-    }
-    const a = document.createElement('a');
-    const url = URL.createObjectURL(new Blob([content], { type: fmt === 'json' ? 'application/json' : 'text/csv;charset=utf-8' }));
-    a.href = url; a.download = `${grouped ? 'automations' : 'traces'}-${redact ? 'redacted-' : ''}${Date.now()}.${fmt}`;
-    a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
-  }
-
-  async _export(fmt, onlySelected, redact = false) {
-    const access = this._accessEpoch;
-    if (!this._isAdminSession(access)) return;
     const available = this.viewMode === 'all-traces' ? this._filteredFlat() : this.traces;
-    const list = onlySelected ? available.filter(t => this.selectedTraceIds.has(t.id)) : available;
-    if (!list.length) return;
-    const full = await this._exportDetails(list, access);
-    if (full) this._downloadExport(full, fmt, false, redact, access);
+    return scope === 'selected' ? available.filter(t => this.selectedTraceIds.has(t.id)) : available;
   }
 
-  async _exportMultiAuto(fmt, redact = false) {
-    const access = this._accessEpoch;
-    if (!this._isAdminSession(access) || !this.selectedAutoIds.size) return;
-    const list = [];
-    for (const entity of this.selectedAutoIds) {
-      const auto = this._rawAutomations.find(a => a.entity === entity);
-      const aid = this._traceKey(auto?.automationId);
-      if (aid && this._traceMap[aid]) list.push(...this._traceMap[aid].traces.map(t => this._traceSummary(t, auto, entity, aid)));
-    }
-    if (!list.length) return;
-    const full = await this._exportDetails(list, access);
-    if (full) this._downloadExport(full, fmt, true, redact, access);
+  _exportObjectId(value) {
+    if (!value || typeof value !== 'object') return 0;
+    if (!this._exportObjectIds.has(value)) this._exportObjectIds.set(value, ++this._exportObjectSerial);
+    return this._exportObjectIds.get(value);
   }
+
+  _readExportContext() {
+    const hass = this._hass;
+    // Signature stays in memory, never enters a payload. Do not stringify raw data.
+    const signature = JSON.stringify([
+      this._accessEpoch, hass?.user?.id, hass?.user?.is_admin, this._exportObjectId(hass?.connection),
+      hass?.connection?.connected, this._comparisonOffline, this._comparisonTransportOffline,
+      this._comparisonSourceEpoch, this._comparisonEpoch, this._lang, this.viewMode,
+      this.selectedAutomation, this.selectedTrace, this.groupBy, this.searchQuery, this.filterStatus,
+      this.sortBy, this.timeRange, this.customTimeFrom, this.customTimeTo, this.traceFilterResult,
+      [...this.selectedTraceIds], [...this.selectedAutoIds], [...this._comparisonRuns.keys()],
+      this._loadingTraces, this._loadingSelected, !!this._fetchError, !!this._traceListError,
+      this._exportObjectId(this.traces), this._exportObjectId(this._allFlatTraces),
+      this._exportObjectId(this._traceMap), this._exportObjectId(this._rawAutomations),
+      this._exportObjectId(this.traceDetail), this._exportObjectId(this._comparisonView),
+      this._exportIntent?.scope,
+      this._exportRows().map(row => [row.item_id, row.id, row.automationName,
+        this._exportObjectId(row.raw), row.raw?.timestamp?.start, row.raw?.timestamp?.finish,
+        row.raw?.state, row.raw?.script_execution])
+    ]);
+    if (signature !== this._exportSignature) { this._exportSignature = signature; this._exportRevision++; }
+    const connected = !!hass?.connection && hass.connection.connected === true
+      && !this._comparisonOffline && !this._comparisonTransportOffline && this.isConnected;
+    return { role: hass?.user?.is_admin ? 'admin' : 'non_admin', userId: hass?.user?.id || 'unknown',
+      connectionId: this._exportObjectId(hass?.connection), datasetId: `trace-viewer:${this._exportIntent?.scope || 'all'}`,
+      revision: this._exportRevision, connected, canExport: hass?.user?.is_admin === true
+        && typeof hass.user.id === 'string' && hass.user.id.trim().length > 0,
+      sourceConfirmed: this._exportRows().length > 0 && !this._loadingTraces && !this._loadingSelected
+        && !this._fetchError && !this._traceListError };
+  }
+
+  _syncExportContext() {
+    if (this._exportLanguage !== this._lang) {
+      this._exportLanguage = this._lang;
+      this._exportDialog?.cancel();
+    }
+    const revision = this._exportRevision;
+    this._readExportContext();
+    if (revision !== this._exportRevision) this._exportDialog?.contextChanged();
+  }
+
+  _invalidateExport() {
+    this._exportRevision++;
+    this._exportDialog?.contextChanged();
+  }
+
+  _comparisonExportable() {
+    const view = this._comparisonView, source = view?.exportSource;
+    if (!source || source.access !== this._accessEpoch || source.epoch !== this._comparisonEpoch
+      || source.sourceEpoch !== this._comparisonSourceEpoch || source.connection !== this._hass?.connection
+      || source.userId !== this._hass?.user?.id || !this._hass?.user?.is_admin
+      || !['available', 'unconfirmed'].includes(view.result?.status)
+      || view.data?.length !== 2 || view.runs?.length !== 2) return false;
+    const selected = this._orderedComparisonRuns();
+    if (selected.length !== 2 || selected.some((run, index) => this._comparisonIdentity(run) !== this._comparisonIdentity(view.runs[index])
+      || view.data[index].run_id !== run.id || view.data[index].item_id !== run.item_id)) return false;
+    // Reuse the same strict contract only as a validation boundary, not a new engine.
+    const checked = tvTraceContract.compare(view.data[0], view.data[1]);
+    return checked.status === 'available' && JSON.stringify(checked.data) === JSON.stringify(view.result.data);
+  }
+
+  _normalizedExportDetail(row) {
+    if (this._comparisonView?.data?.some(run => run.run_id === row.id && run.item_id === row.item_id)
+      && this._comparisonExportable()) {
+      const data = this._comparisonView.data.find(run => run.run_id === row.id && run.item_id === row.item_id);
+      if (data) return { data, source: 'current_comparison' };
+    }
+    if (this._comparisonDetailSourceEpoch === this._comparisonSourceEpoch && !this.traceDetail?.unavailable
+      && this.traceDetail?.trace && this._comparisonIdentity(this.traceDetail.trace) === this._comparisonIdentity(row)) {
+      const capability = tvTraceContract.normalizeFull(this.traceDetail.rawData, { expectedItemId: row.item_id });
+      if (capability.status === 'available' && capability.data.run_id === row.id && capability.data.item_id === row.item_id) {
+        return { data: capability.data, source: 'current_detail' };
+      }
+    }
+    return null; // Unbound persisted detail cannot prove the current HA source.
+  }
+
+  _exportRecord(row, includePrivate, index, names, paths) {
+    if (!names.has(row.item_id)) names.set(row.item_id, 'Automation ' + (names.size + 1));
+    const list = tvTraceContract.normalizeList([row.raw], { expectedItemId: row.item_id });
+    const summary = list.status === 'available' && list.data.runs[0].run_id === row.id ? list.data.runs[0] : null;
+    const full = this._normalizedExportDetail(row), data = full?.data;
+    const state = data?.run_state || summary?.run_state;
+    const outcome = summary?.script_execution;
+    const status = state === 'running' ? 'running' : outcome === 'finished' ? 'success'
+      : ['error', 'any_error'].includes(outcome) ? 'error' : outcome === 'aborted' ? 'aborted'
+      : state === 'stopped' ? 'stopped' : 'unknown';
+    const privateText = value => typeof value === 'string' && value.length > 0 && value.length <= 256 ? value : null;
+    const record = { run_alias: 'Run ' + (index + 1), run_id: 'Run ' + (index + 1), automation: names.get(row.item_id),
+      automation_alias: names.get(row.item_id), redacted: true, status,
+      duration_ms: data ? data.run_duration_ms : summary?.run_duration_ms ?? null,
+      detail: { status: data ? 'available' : 'unavailable', source: full?.source || 'unavailable',
+        step_count: data ? data.nodes.length : null,
+        nodes: data ? data.nodes.map(node => {
+          if (!paths.has(node.path)) paths.set(node.path, 'Point ' + (paths.size + 1));
+          return { point: paths.get(node.path), ordinal: node.ordinal, status: node.status, offset_ms: node.offset_ms };
+        }) : null } };
+    if (includePrivate) {
+      // Reviewed metadata only; no item/entity IDs, paths, free-text errors or triggers.
+      record.run_id = privateText(row.id) || record.run_id;
+      record.automation = privateText(row.automationName) || record.automation;
+      record.timestamp = summary?.started_at || null;
+      record.finish = summary?.finished_at || null;
+    }
+    return record;
+  }
+
+  _buildExportPayload({ draft, signal }) {
+    const context = this._readExportContext();
+    if (signal.aborted || !context.connected || !context.canExport || !context.sourceConfirmed) return { status: 'no_data', serialized: '' };
+    const scope = this._exportIntent.scope, rows = this._exportRows(scope);
+    if (!rows.length) return { status: 'no_data', serialized: '' };
+    const names = new Map(), paths = new Map();
+    const records = rows.map((row, index) => this._exportRecord(row, draft.includePrivate, index, names, paths));
+    const pl = this._lang === 'pl';
+    const included = [pl ? 'Dokładny wybrany zakres, aliasy, stan i potwierdzone czasy trwania.' : 'Exact chosen scope, aliases, state and confirmed durations.',
+      pl ? 'Dostępne znormalizowane punkty wykonania; brakujące dane oznaczone jawnie.' : 'Available normalized execution points; missing data explicitly marked.',
+      draft.includePrivate ? (pl ? 'Nazwy automatyzacji, identyfikatory uruchomień i potwierdzone daty wybranych rekordów.' : 'Automation names, run identifiers and confirmed dates of the chosen records.')
+        : (pl ? 'Pola prywatne wyłączone.' : 'Private fields off.')];
+    const excluded = [pl ? 'Tokeny, użytkownicy, adresy, surowa konfiguracja, zmienne, komunikaty błędów, opis wyzwalacza, identyfikatory encji i ścieżki źródłowe.' : 'Tokens, users, addresses, raw configuration, variables, error messages, trigger text, entity identifiers and source paths.'];
+    const sourceLimit = pl
+      ? 'Lokalny zakres karty: lista może zawierać historię przeglądarki. Szczegóły wyłącznie z bieżącego potwierdzonego źródła. Brak pobierania; null oznacza brak danych. Nie dowodzi pełnego przebiegu.'
+      : 'Local card scope: the list may include browser history. Details only from the current confirmed source. No fetching; null means missing data. Does not prove a complete execution.';
+    let partial = records.some(record => record.detail.status !== 'available' || record.duration_ms === null || record.status === 'running' || record.status === 'unknown');
+    const report = { schema: 'ha-trace-viewer-export-v1', status: 'success', scope,
+      private_fields: draft.includePrivate, record_count: records.length, included, excluded,
+      source_limit: sourceLimit, records };
+    if (scope === 'automations') {
+      // Group by source identity rather than label, preserving duplicate and prototype-like names.
+      report.groups = [...names].map(([itemId, alias]) => ({ automation_alias: alias,
+        records: records.filter((_record, index) => rows[index].item_id === itemId) }));
+      report.selected_automation_count = this.selectedAutoIds.size;
+      report.empty_automation_count = Math.max(0, this.selectedAutoIds.size - report.groups.length);
+      partial ||= report.empty_automation_count > 0;
+    }
+    if (scope === 'comparison') {
+      if (!this._comparisonExportable()) return { status: 'no_data', serialized: '' };
+      const view = this._comparisonView;
+      const points = this._comparisonPoints(view).map(point => ({ point: paths.get(point.path), ordinal: point.ordinal,
+        category: point.category, offset_ms: point.offset,
+        delta_ms: Object.hasOwn(point, 'delta_ms') ? point.delta_ms : null }));
+      report.comparison = { baseline: 'Run 1', current: 'Run 2', source_status: view.result.status,
+        run: { classification: view.result.data.run.classification, delta_ms: view.result.data.run.delta_ms },
+        first_difference: points.find(point => point.category !== 'unchanged') || null, points };
+      partial ||= view.result.status !== 'available';
+    }
+    report.status = partial ? 'partial' : 'success';
+    let serialized;
+    if (draft.format === 'json') serialized = JSON.stringify(report, null, 2);
+    else if (draft.format === 'csv') {
+      // Metadata accompanies every row so a partial CSV remains self-describing.
+      const keys = ['schema','report_status','scope','private_fields','record_count','source_limit','included','excluded',
+        'run_alias','run_id','automation','automation_alias','status','duration_ms','timestamp','finish','detail_status','detail_source','step_count','nodes',
+        'selected_automation_count','empty_automation_count','comparison'];
+      const csvRows = records.map(record => [report.schema, report.status, scope, report.private_fields, records.length, sourceLimit,
+        JSON.stringify(included), JSON.stringify(excluded), record.run_alias, record.run_id, record.automation, record.automation_alias,
+        record.status, record.duration_ms === null ? 'null' : record.duration_ms,
+        record.timestamp ?? 'null', record.finish ?? 'null', record.detail.status, record.detail.source,
+        record.detail.step_count === null ? 'null' : record.detail.step_count, JSON.stringify(record.detail.nodes),
+        report.selected_automation_count ?? '', report.empty_automation_count ?? '', report.comparison ? JSON.stringify(report.comparison) : '']);
+      serialized = [keys, ...csvRows].map(values => values.map(value => this._csvCell(value)).join(',')).join('\r\n');
+    } else return { status: 'no_data', serialized: '' };
+    return { serialized, confirmed: true, sourceConfirmed: true, status: report.status, included, excluded, sourceLimit };
+  }
+
+  _performExportDownload({ blob, filename, context, signal }) {
+    const current = this._readExportContext();
+    if (signal.aborted || !this.isConnected || !current.canExport || !current.connected || !current.sourceConfirmed
+      || Object.keys(context).some(key => context[key] !== current[key])) return { outcome: 'unknown' };
+    const url = URL.createObjectURL(blob);
+    try {
+      const anchor = this.ownerDocument.createElement('a'); anchor.href = url; anchor.download = filename;
+      anchor.click();
+      return { outcome: 'initiated' }; // Browser handoff cannot confirm persistence to disk.
+    } finally { setTimeout(() => URL.revokeObjectURL(url), 1000); }
+  }
+
+  _openExport(scope, format, opener) {
+    if (!['json', 'csv'].includes(format) || this._hass?.user?.is_admin !== true || !this._exportRows(scope).length) return;
+    // Do not replace the factory while a previous handoff may still settle.
+    if (this._exportHandoff) { this._exportDialog?.open({ opener }); return; }
+    this._exportDialog?.destroy();
+    this._exportIntent = { scope };
+    this._syncExportContext();
+    const launchRevision = this._exportRevision;
+    this._exportDialog = createExportDialog({ root: this.shadowRoot, getLanguage: () => this._lang,
+      createUiV3, getContext: () => this._readExportContext(), formats: ['json', 'csv'], defaultFormat: format,
+      defaultFilename: `${scope === 'comparison' ? 'comparison' : scope === 'automations' ? 'automations' : 'traces'}.${format}`,
+      policy: { id: 'trace-viewer-w6-allowlist-v1', allowlistedFields: ['scope','status','counts','aliases','durations','normalized_points','comparison','reviewed_run_metadata'],
+        neverInclude: ['tokens','users','addresses','raw_config'] },
+      buildPayload: request => this._buildExportPayload(request),
+      performDownload: async request => {
+        if (this._exportHandoff) return { outcome: 'unknown' };
+        const handoff = {}; this._exportHandoff = handoff;
+        try { return await this._performExportDownload(request); }
+        finally { if (this._exportHandoff === handoff) this._exportHandoff = null; }
+      } });
+    // Factory opens synchronously and starts only one preview. No post-await open.
+    if (launchRevision === this._exportRevision && this.isConnected) this._exportDialog.open({ opener: opener || this._exportOpener(scope) });
+  }
+
+  _exportOpener(scope) {
+    // Stable focus proxy resolves the replacement toolbar button after card repaint.
+    return { get isConnected() { return true; }, focus: () => {
+      if (this.isConnected) this.shadowRoot.querySelector(scope === 'comparison' ? '#exportComparison' : '#expBtn')?.focus({ preventScroll: true });
+    } };
+  }
+
+  _export(fmt, onlySelected) { this._openExport(onlySelected ? 'selected' : 'all', fmt); }
+  _exportMultiAuto(fmt) { this._openExport('automations', fmt); }
+  _exportComparison() { if (this._comparisonExportable()) this._openExport('comparison', 'json'); }
 
   // ============================================================
 
@@ -2512,6 +3026,7 @@ class HATraceViewer extends HTMLElement {
   }
 
   _invalidateComparison(clearSelection = false) {
+    this._invalidateExport();
     this._comparisonEpoch++;
     this._comparisonController?.abort();
     this._comparisonController = null;
@@ -2619,7 +3134,7 @@ class HATraceViewer extends HTMLElement {
             || capability.data.run_duration_ms === null)) result = { ...result, status: 'unconfirmed' };
         }
         // Retain normalized allowlisted data only. Raw trace/config/variables never enter comparison state/DOM.
-        this._comparisonView = { runs, result, message: timedOut ? 'timeout' : null,
+        this._comparisonView = { runs, result, exportSource: { access, epoch, sourceEpoch: this._comparisonSourceEpoch, connection, userId }, message: timedOut ? 'timeout' : null,
           data: capabilities.every(capability => capability.status === 'available') ? capabilities.map(capability => capability.data) : null };
         const focused = this.shadowRoot.activeElement;
         const restoreFocus = focused && this.shadowRoot.querySelector('#traceComparison')?.contains(focused);
@@ -2678,6 +3193,7 @@ class HATraceViewer extends HTMLElement {
     const timing = result?.data?.run;
     return `<section id="traceComparison" class="trace-comparison" role="region" aria-labelledby="comparisonHeading">
       <div class="comparison-actions"><h3 id="comparisonHeading" tabindex="-1">${this._comparisonText(result?.status || 'loading')}</h3>
+        ${this._comparisonExportable() ? `<button type="button" id="exportComparison" class="comparison-button">${this._lang === 'pl' ? 'Eksportuj porównanie' : 'Export comparison'}</button>` : ''}
         <button type="button" id="closeComparison" class="comparison-button">${this._comparisonText('close')}</button></div>
       <div class="comparison-records">${records}</div>
       <p role="status">${view.message ? this._comparisonText(view.message) : ''}</p>
@@ -2851,15 +3367,17 @@ class HATraceViewer extends HTMLElement {
   // ============================================================
 
   render() {
+    this._syncExportContext();
     if (!this._hass) return;
     const familyFocus=_rememberFamilyFocus(this), familyDrafts=_rememberFamilyDrafts(this);
     const familyRowFocus=_rememberFamilyRowFocus(this, [['[data-auto-action]','data-auto-action'],['[data-trace-action]','data-trace-action'],['.tgroup-h[data-group]','data-group'],['[data-autocheck]','data-autocheck'],['[data-tcheck]','data-tcheck'],['[data-compare-run]','data-compare-run']]);
     this._ensureComparisonLifecycle();
     if (!this._hass.user?.is_admin) {
+      this._exportDialog?.cancel();
       const message = this._lang === 'pl'
         ? 'Ślady automatyzacji są dostępne tylko dla administratora Home Assistant.'
         : 'Automation traces are available only to a Home Assistant administrator.';
-      this.shadowRoot.innerHTML = `${this._css()}<div class="card"><div class="col-main"><div class="topbar"><span class="title">${_esc(this.config.title || this._t('traceViewer'))}</span></div><div role="status" style="padding:16px;color:var(--bento-text-secondary)">${message}</div></div></div>`;
+      this._cardSurface.innerHTML = `${this._css()}<div class="card"><div class="col-main"><div class="topbar"><span class="title">${_esc(this.config.title || this._t('traceViewer'))}</span></div><div role="status" style="padding:16px;color:var(--bento-text-secondary)">${message}</div></div></div>`;
       _bindFamilyNavigation(this);
       return;
     }
@@ -2869,7 +3387,7 @@ class HATraceViewer extends HTMLElement {
           direction: activeSearch.selectionDirection }
       : null;
     const selN = this.selectedTraceIds.size;
-    this.shadowRoot.innerHTML = `${this._css()}
+    this._cardSurface.innerHTML = `${this._css()}
     <div class="card">
       <div class="col-main">
         ${this._loadingTraces || this._loadingSelected ? `<div role="status">${this._lang === 'pl' ? 'Wczytywanie śladów…' : 'Loading traces…'}</div>` : ''}
@@ -2881,10 +3399,10 @@ class HATraceViewer extends HTMLElement {
           <div class="topbar-r">
             <span class="trace-saved-badge" id="traceStorageInfo" title="${this._lang === 'pl' ? 'Zapisane trace\u2019y' : 'Saved traces'}" style="font-size:11px;color:var(--bento-text-secondary);padding:4px 8px;background:var(--bento-bg);border-radius:var(--radius-xs);border:1px solid var(--bento-border);display:inline-flex;align-items:center;gap:4px">\u{1F4BE} ${this._getStoredTraceCount()} saved</span><button type="button" class="trace-settings-btn" id="goToSettingsBtn" title="${this._lang === 'pl' ? 'Ustawienia Trace Viewer' : 'Trace Viewer Settings'}" style="font-size:11px;color:var(--bento-text-secondary);padding:4px 8px;background:var(--bento-bg);border-radius:var(--radius-xs);border:1px solid var(--bento-border);cursor:pointer;display:inline-flex;align-items:center;gap:4px;margin-left:6px">\u2699\uFE0F ${this._lang === 'pl' ? 'Ustawienia' : 'Settings'}</button>
             <div class="dd" id="expDD">
-              <button class="btn-s" id="expBtn" ${selN === 0 && this.selectedAutoIds.size === 0 ? 'disabled style="opacity:0.4;pointer-events:none;cursor:default"' : ''}>${this._t('export')} \u25BE</button>
+              <button class="btn-s" id="expBtn" ${!this._exportRows('all').length && this.selectedAutoIds.size === 0 ? 'disabled' : ''}>${this._t('export')} \u25BE</button>
               <div class="dd-menu">
-                <label class="dd-i"><input id="redactExport" type="checkbox" ${this._redactExport !== false ? 'checked' : ''}> ${this._lang === 'pl' ? 'Usuń dane identyfikujące (do udostępniania)' : 'Redact identifying data (for sharing)'}</label>
-                <div style="padding:8px;font-size:11px">${this._lang === 'pl' ? 'Surowe dane mogą zawierać sekrety. Sprawdź plik przed udostępnieniem.' : 'Raw exports may include secrets. Review any file before sharing.'}</div>
+                <div style="padding:8px;font-size:11px">${this._lang === 'pl' ? 'Podgląd przed zapisem. Pola prywatne domyślnie wyłączone.' : 'Preview before saving. Private fields off by default.'}</div>
+                ${this._exportRows('all').length ? `<button type="button" class="dd-i" data-exp="all-json">JSON (${this._lang === 'pl' ? 'wszystkie w bieżącym zakresie' : 'all in current scope'})</button><button type="button" class="dd-i" data-exp="all-csv">CSV (${this._lang === 'pl' ? 'wszystkie w bieżącym zakresie' : 'all in current scope'})</button><div class="dd-div"></div>` : ''}
                 ${selN > 0 ? `<button type="button" class="dd-i" data-exp="sel-json">JSON (${selN} traces ${this._t('selected')})</button><button type="button" class="dd-i" data-exp="sel-csv">CSV (${selN} traces ${this._t('selected')})</button><div class="dd-div"></div>` : ''}
                 ${this.selectedAutoIds.size > 0 ? `<button type="button" class="dd-i" data-exp="auto-json">JSON (${this.selectedAutoIds.size} ${this._t('automations')})</button><button type="button" class="dd-i" data-exp="auto-csv">CSV (${this.selectedAutoIds.size} ${this._t('automations')})</button><div class="dd-div"></div>` : ''}
                 
@@ -3005,6 +3523,7 @@ class HATraceViewer extends HTMLElement {
     const $ = s => this.shadowRoot.querySelector(s);
     const $$ = s => this.shadowRoot.querySelectorAll(s);
 
+    $('#exportComparison')?.addEventListener('click', () => this._exportComparison());
     $('#compareRuns')?.addEventListener('click', () => this._compareSelectedRuns());
     $$('[data-compare-run]').forEach(button => button.addEventListener('click', event => {
       event.stopPropagation();
@@ -3089,16 +3608,15 @@ class HATraceViewer extends HTMLElement {
     $('#expDD')?.addEventListener('keydown', e => {
       if (e.key === 'Escape') { e.stopPropagation(); closeExportMenu(); $('#expBtn')?.focus(); }
     });
-    $('#redactExport')?.addEventListener('change', e => { this._redactExport = e.target.checked; });
     $$('[data-retry]').forEach(el => el.addEventListener('click', () => el.dataset.retry === 'all' ? this.updateAutomationData() : this._loadTraces(this.selectedAutomation)));
     $$('.dd-i[data-exp]').forEach(el => el.addEventListener('click', () => {
       const a = el.dataset.exp;
-      if (a === 'all-json') this._export('json', false, this._redactExport !== false);
-      else if (a === 'all-csv') this._export('csv', false, this._redactExport !== false);
-      else if (a === 'sel-json') this._export('json', true, this._redactExport !== false);
-      else if (a === 'sel-csv') this._export('csv', true, this._redactExport !== false);
-      else if (a === 'auto-json') this._exportMultiAuto('json', this._redactExport !== false);
-      else if (a === 'auto-csv') this._exportMultiAuto('csv', this._redactExport !== false);
+      if (a === 'all-json') this._export('json', false);
+      else if (a === 'all-csv') this._export('csv', false);
+      else if (a === 'sel-json') this._export('json', true);
+      else if (a === 'sel-csv') this._export('csv', true);
+      else if (a === 'auto-json') this._exportMultiAuto('json');
+      else if (a === 'auto-csv') this._exportMultiAuto('csv');
       closeExportMenu();
     }));
 
@@ -3768,6 +4286,8 @@ ${_FAMILY_CONTROL_CSS}
     _bindFamilyNavigation(this);
   }
   disconnectedCallback() {
+    this._exportDialog?.cancel();
+    if (!this._exportHandoff) { this._exportDialog?.destroy(); this._exportDialog = null; }
     this._invalidateComparison(true);
     window.removeEventListener('offline', this._comparisonOfflineHandler);
     window.removeEventListener('online', this._comparisonOnlineHandler);

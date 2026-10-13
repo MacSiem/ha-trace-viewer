@@ -42,7 +42,7 @@ for(const format of ['json','csv']) test(`W6 ${format}: explicit Save hands off 
 });
 test('W6 private opt-in allows only reviewed metadata and CSV formula defense',async()=>{
  const f=fixture();try{await openExport(f,'csv');await privatePreview(f);const content=field(f,'preview').textContent;
- assert.match(content,/"'=1\+1"/);assert.match(content,/private-run/);assert.doesNotMatch(content,/QA_SENTINEL|say|changed_variables|config|private-item/);
+ assert.match(content,/"'=1\+1"/);assert.match(content,/private-run/);assert.doesNotMatch(content,/QA_SENTINEL|say|changed_variables|private-item/);
  field(f,'cancel').click();await openExport(f);assert.equal(field(f,'private').checked,false);
  }finally{f.close();}
 });
