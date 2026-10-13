@@ -96,3 +96,10 @@ test('W6 unresolved handoff remains latched across cancel and reopen',async()=>{
  field(f,'save').click();assert.equal(writes,1);finish({outcome:'unknown'});await settled();assert.equal(field(f,'save').disabled,true);assert.equal(f.download(),undefined);
  }finally{f.close();}
 });
+
+test('W6 closing an expired comparison returns focus to the surviving export toolbar', async t => {
+ const {card,dom}=setup(t);card.render();
+ const opener=card._exportOpener('comparison');
+ opener.focus();
+ assert.equal(card.shadowRoot.activeElement,card.shadowRoot.querySelector('#expBtn'));
+});

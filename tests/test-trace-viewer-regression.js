@@ -15,7 +15,9 @@ function loadViewerClass(saveOptions = {}) {
 
     attachShadow() {
       this.shadowRoot = {
-        innerHTML: '',
+        children: [],
+        append(node) { this.children.push(node); },
+        get innerHTML() { return this.children.map(node => node.innerHTML).join(''); },
         querySelector: () => null,
         querySelectorAll: () => [],
       };
