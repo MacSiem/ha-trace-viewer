@@ -80,7 +80,7 @@ test('every visible form field has a native label or accessible name, and editor
 
 test('existing trace and automation selections use named native checkbox labels',()=>{
  const f=fixture();try{f.card.selectMode=true;f.card.automations=[{entity:'automation.synthetic',name:'Synthetic automation',status:'stopped',lastTriggered:null}];f.card.render();
- const checkbox=f.card.shadowRoot.querySelector('[data-autocheck]');assert.equal(checkbox.type,'checkbox');assert.equal(checkbox.labels.length,1);assert.ok(checkbox.getAttribute('aria-label'));checkbox.labels[0].click();assert.equal(f.card.selectedAutoIds.has('automation.synthetic'),true);assert.equal(f.calls.length,0);
+ const checkbox=f.card.shadowRoot.querySelector('[data-autocheck]');assert.equal(checkbox.type,'checkbox');assert.equal(checkbox.labels.length,1);assert.ok(checkbox.getAttribute('aria-label'));checkbox.focus();checkbox.labels[0].click();assert.equal(f.card.selectedAutoIds.has('automation.synthetic'),true);assert.equal(f.card.shadowRoot.activeElement?.getAttribute('data-autocheck'),'automation.synthetic');assert.equal(f.calls.length,0);
  }finally{f.card.remove();f.dom.window.close();}
 });
 
@@ -95,7 +95,7 @@ test('automation selection works with Enter/Space, ignores key repeats and retai
 test('trace keyboard activation loads exactly one real detail and nested comparison keys do not activate the row',async()=>{
  const f=fixture();try{f.card.traceDetail=null;const trace={id:'synthetic-run',item_id:'synthetic-item',automationName:'Synthetic',timestamp:new f.dom.window.Date('2026-01-01T00:00:00Z'),status:'success',duration:10,trigger:'state',lastStep:'action/0'};f.card.selectedAutomation='automation.synthetic';f.card.traces=[trace];f.card._allFlatTraces=[trace];f.card._hass.callWS=async message=>{f.calls.push(message);return {trace:{},config:{alias:'Synthetic'}}};f.card.render();const row=()=>f.card.shadowRoot.querySelector('.tr-item button:not(.comparison-toggle)');assert.ok(row(),'Trace action is a native button, separate from compare control');row().focus();row().dispatchEvent(new f.dom.window.KeyboardEvent('keydown',{key:' ',bubbles:true,cancelable:true}));await new Promise(resolve=>setImmediate(resolve));
   assert.equal(f.calls.length,1);assert.equal(f.calls[0].type,'trace/get');assert.equal(f.calls[0].run_id,'synthetic-run');assert.equal(f.card.selectedTrace,'synthetic-run');assert.equal(f.card.shadowRoot.activeElement,row());assert.match(row().getAttribute('aria-label'),/Synthetic/);
-  const compare=row().closest('.tr-item').querySelector('[data-compare-run]');assert.equal(row().closest('.tr-item').getAttribute('role'),null,'Do not nest comparison controls inside a button role');compare.dispatchEvent(new f.dom.window.KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));compare.click();assert.equal(f.calls.length,1);assert.equal(f.card._comparisonRuns.size,1);
+  const compare=row().closest('.tr-item').querySelector('[data-compare-run]');assert.equal(row().closest('.tr-item').getAttribute('role'),null,'Do not nest comparison controls inside a button role');compare.focus();compare.dispatchEvent(new f.dom.window.KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));compare.click();assert.equal(f.calls.length,1);assert.equal(f.card._comparisonRuns.size,1);assert.equal(f.card.shadowRoot.activeElement?.getAttribute('data-compare-run'),f.card._comparisonIdentity(trace));
  }finally{f.card.remove();f.dom.window.close()}
 });
 test('group headers expose expanded state and keyboard toggles without API requests',()=>{
