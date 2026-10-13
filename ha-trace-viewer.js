@@ -2853,7 +2853,7 @@ class HATraceViewer extends HTMLElement {
   render() {
     if (!this._hass) return;
     const familyFocus=_rememberFamilyFocus(this), familyDrafts=_rememberFamilyDrafts(this);
-    const familyRowFocus=_rememberFamilyRowFocus(this, [['[data-auto-action]','data-auto-action'],['[data-trace-action]','data-trace-action'],['.tgroup-h[data-group]','data-group']]);
+    const familyRowFocus=_rememberFamilyRowFocus(this, [['[data-auto-action]','data-auto-action'],['[data-trace-action]','data-trace-action'],['.tgroup-h[data-group]','data-group'],['[data-autocheck]','data-autocheck'],['[data-tcheck]','data-tcheck'],['[data-compare-run]','data-compare-run']]);
     this._ensureComparisonLifecycle();
     if (!this._hass.user?.is_admin) {
       const message = this._lang === 'pl'
