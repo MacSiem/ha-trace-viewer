@@ -209,3 +209,26 @@ test('running comparison retains recorded differences and W6 partial export', as
   assert.equal(report.status, 'partial'); assert.equal(report.record_count, 2);
   assert.equal(report.comparison.source_status, 'unconfirmed'); assert(report.comparison.points.length > 0);
 });
+
+// Owner supplement: Chrome found a cached English result after live locale change.
+test('live locale change translates the open detail without refetching or changing source data', async t => {
+  const input = raw('unknown', { script_execution: null });
+  const { card } = setup(t, 'en', [input]);
+  card.hass = card._hass;
+  await new Promise(resolve => setImmediate(resolve));
+  const row = card._allFlatTraces[0], sourceDetail = full(input);
+  card.selectedTrace = row.id;
+  card.traceDetail = card._buildDetail(row, sourceDetail);
+  card.render();
+  let calls = 0;
+  card._hass.callWS = async () => { calls++; throw new Error('Locale must not fetch'); };
+  const serialized = JSON.stringify(sourceDetail);
+  card.hass = { ...card._hass, language: 'pl' };
+  const result = card.shadowRoot.querySelector('.tl-step.s-unconfirmed');
+  assert.match(result.textContent, /Niepotwierdzony.*Zakończono o/);
+  assert.doesNotMatch(result.textContent, /Unconfirmed|Finished at/);
+  assert.equal(card.selectedTrace, row.id);
+  assert.equal(card.traceDetail.rawData, sourceDetail);
+  assert.equal(JSON.stringify(sourceDetail), serialized);
+  assert.equal(calls, 0);
+});
