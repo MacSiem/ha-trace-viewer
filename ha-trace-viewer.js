@@ -2124,7 +2124,14 @@ class HATraceViewer extends HTMLElement {
       this._allTraces = [];
       this._traceMap = {};
       this.updateAutomationData();
-    } else if (hass && previousLanguage !== this._lang) this.render();
+    } else if (hass && previousLanguage !== this._lang) {
+      // Detail descriptions are localized when built. Reuse the same source;
+      // switching language must not fetch, select another run or invent a result.
+      if (this.traceDetail && !this.traceDetail.unavailable) {
+        this.traceDetail = this._buildDetail(this.traceDetail.trace, this.traceDetail.rawData);
+      }
+      this.render();
+    }
   }
 
   // ============================================================
