@@ -102,3 +102,9 @@ test('group headers expose expanded state and keyboard toggles without API reque
  const f=fixture();try{f.card.viewMode='all-traces';f.card.groupBy='automation';f.card.timeRange='all';f.card._allFlatTraces=[{id:'synthetic-run',item_id:'synthetic-item',automationName:'Synthetic',timestamp:new f.dom.window.Date('2026-01-01T00:00:00Z'),status:'success',duration:10,trigger:'state'}];f.card.render();const header=f.card.shadowRoot.querySelector('.tgroup-h');assert.ok(header);assert.equal(header.tagName,'BUTTON');header.focus();header.dispatchEvent(new f.dom.window.KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));assert.equal(header.parentElement.classList.contains('collapsed'),true);assert.equal(header.getAttribute('aria-expanded'),'false');header.dispatchEvent(new f.dom.window.KeyboardEvent('keydown',{key:' ',bubbles:true,cancelable:true}));assert.equal(header.parentElement.classList.contains('collapsed'),false);assert.equal(header.getAttribute('aria-expanded'),'true');assert.equal(f.calls.length,0);
  }finally{f.card.remove();f.dom.window.close()}
 });
+
+
+test('flat trace view exposes the supported no-grouping choice and keeps model and native selection aligned',()=>{
+ const f=fixture();try{f.card.viewMode='all-traces';f.card.groupBy='none';f.card.render();const select=f.card.shadowRoot.getElementById('grpSel');assert.equal(select.value,'none');assert.ok([...select.options].some(o=>o.value==='none'));select.value='automation';select.dispatchEvent(new f.dom.window.Event('change',{bubbles:true}));const next=f.card.shadowRoot.getElementById('grpSel');next.value='none';next.dispatchEvent(new f.dom.window.Event('change',{bubbles:true}));assert.equal(f.card.groupBy,'none');assert.equal(f.card.shadowRoot.getElementById('grpSel').value,'none');assert.equal(f.calls.length,0);
+ }finally{f.card.remove();f.dom.window.close()}
+});
