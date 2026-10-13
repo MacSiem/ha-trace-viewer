@@ -1289,6 +1289,114 @@ pre {
 }
 `;
 
+
+const FAMILY_NAV='.det-tabs',FAMILY_ATTR='data-dtab',FAMILY_ACTIVE='act';
+
+// Adapted from Config/YAML family15: options come only from current native buttons.
+// Observe the actual navigation parent's content box, not the global viewport.
+function _rememberFamilyFocus(card) {
+  const active = card.shadowRoot?.activeElement;
+  const nav = card.shadowRoot?.querySelector(FAMILY_NAV);
+  if (active?.id === 'ha-tools-tab-picker') return { picker:true };
+  if (nav?.contains(active)) return { tab:active.getAttribute(FAMILY_ATTR) };
+  return null;
+}
+function _disconnectFamilyNavigation(card) {
+  card._familyNavObserver?.disconnect();card._familyNavObserver=null;card._familyNavTarget=null;
+}
+function _bindFamilyNavigation(card, restoreFocus=null) {
+  const root=card.shadowRoot, nav=root?.querySelector(FAMILY_NAV);
+  if (!nav) { _disconnectFamilyNavigation(card);return; }
+  let label=root.querySelector('.ht-tab-picker');
+  if (!label) {
+    label=card.ownerDocument.createElement('div');label.className='ht-tab-picker';
+    const text=card.ownerDocument.createElement('label');text.htmlFor='ha-tools-tab-picker';label.append(text);
+    const select=card.ownerDocument.createElement('select');select.id='ha-tools-tab-picker';label.append(select);nav.before(label);
+    select.addEventListener('change',()=>{
+      const button=Array.from(root.querySelectorAll(FAMILY_NAV+' button['+FAMILY_ATTR+']')).find(item=>item.getAttribute(FAMILY_ATTR)===select.value&&!item.disabled&&!item.hidden);
+      if(button)button.click(); // The original handler owns navigation, history and guards.
+      _bindFamilyNavigation(card);
+    });
+  }
+  label.firstElementChild.textContent=card._lang==='pl'?'Zakładka':'Tab';
+  const select=label.querySelector('select');
+  const buttons=Array.from(nav.querySelectorAll('button['+FAMILY_ATTR+']')).filter(button=>!button.hidden&&!button.disabled);
+  const options=Array.from(select.options);
+  if(options.length!==buttons.length||buttons.some((button,index)=>options[index]?.value!==button.getAttribute(FAMILY_ATTR))) {
+    select.replaceChildren(...buttons.map(button=>{const option=card.ownerDocument.createElement('option');option.value=button.getAttribute(FAMILY_ATTR);return option;}));
+  }
+  buttons.forEach((button,index)=>{select.options[index].textContent=button.getAttribute('aria-label')||button.textContent.trim();});
+  const selected=buttons.find(button=>button.classList.contains(FAMILY_ACTIVE));select.value=selected?.getAttribute(FAMILY_ATTR)||'';
+  const target=nav.parentElement;
+  const applyWidth=width=>{
+    const currentNav=root.querySelector(FAMILY_NAV),currentLabel=root.querySelector('.ht-tab-picker');if(!currentNav||!currentLabel)return;
+    const input=currentLabel.querySelector('select'),active=root.activeElement;
+    const style=getComputedStyle(currentNav);
+    const available=width-(parseFloat(style.paddingLeft)||0)-(parseFloat(style.paddingRight)||0);
+    const narrow=available>0&&available<280,fromTab=currentNav.contains(active),fromPicker=active===input;
+    currentNav.hidden=narrow;currentLabel.hidden=!narrow;
+    if(narrow&&fromTab)input.focus({preventScroll:true});
+    else if(!narrow&&fromPicker)currentNav.querySelector('button.'+FAMILY_ACTIVE)?.focus({preventScroll:true});
+  };
+  if(card._familyNavTarget!==target) {
+    _disconnectFamilyNavigation(card);
+    const style=getComputedStyle(target);
+    const measured=target.getBoundingClientRect().width-(parseFloat(style.paddingLeft)||0)-(parseFloat(style.paddingRight)||0)-(parseFloat(style.borderLeftWidth)||0)-(parseFloat(style.borderRightWidth)||0);
+    if(measured>0)card._familyNavWidth=measured;
+    if(typeof ResizeObserver==='function'&&card.isConnected) {
+      card._familyNavTarget=target;
+      card._familyNavObserver=new ResizeObserver(entries=>{
+        if(!card.isConnected||card._familyNavTarget!==target)return;
+        const entry=entries.find(item=>item.target===target);if(!entry)return;
+        card._familyNavWidth=entry.contentRect.width;applyWidth(card._familyNavWidth);
+      });
+      card._familyNavObserver.observe(target);
+    }
+  }
+  applyWidth(card._familyNavWidth||900);
+  // If ResizeObserver is unavailable, all native tabs and the complete picker stay usable.
+  if(typeof ResizeObserver!=='function') { nav.hidden=false;label.hidden=false; }
+  if(restoreFocus) {
+    const button=buttons.find(item=>item.getAttribute(FAMILY_ATTR)===restoreFocus.tab)||selected;
+    if(nav.hidden)select.focus({preventScroll:true});else button?.focus({preventScroll:true});
+  }
+}
+
+function _rememberFamilyDrafts(card) {
+  const root=card.shadowRoot, active=root?.activeElement;
+  return Array.from(root?.querySelectorAll('input[id]:not([type=checkbox]):not([type=radio]),textarea[id]')||[],field=>({
+    id:field.id,context:field.getAttribute('data-family-draft-context'),value:field.value,focused:field===active,start:field.selectionStart,end:field.selectionEnd,direction:field.selectionDirection,scrollTop:field.scrollTop,
+  }));
+}
+function _restoreFamilyDrafts(card, fields) {
+  for(const saved of fields) {
+    const field=card.shadowRoot.getElementById(saved.id);if(!field||field.disabled||field.getAttribute('data-family-draft-context')!==saved.context)continue;
+    field.value=saved.value;field.scrollTop=saved.scrollTop;
+    if(saved.focused){field.focus({preventScroll:true});if(typeof saved.start==='number'&&typeof field.setSelectionRange==='function')field.setSelectionRange(saved.start,saved.end,saved.direction||'none');}
+  }
+}
+
+const _FAMILY_CONTROL_CSS = `
+/* Family15: native touch targets; checkbox indicators remain small inside labels. */
+:host button,:host summary,:host a[href],:host [role=button],
+:host input:not([type=checkbox]):not([type=radio]),:host select,:host textarea {
+  box-sizing:border-box;min-height:44px !important;min-width:44px !important;max-width:100%;
+}
+:host button,:host summary,:host a[href] { white-space:normal !important;overflow-wrap:anywhere; }
+:host a[href] { display:inline-flex;align-items:center; }
+:host label:has(input[type=checkbox]) { min-height:44px !important;min-width:44px;display:flex;align-items:center;gap:8px;cursor:pointer; }
+:host input[type=checkbox] { width:18px;height:18px;flex:none; }
+:host button:focus-visible,:host summary:focus-visible,:host a:focus-visible,:host input:focus-visible,:host select:focus-visible,:host textarea:focus-visible,:host [role=button]:focus-visible {
+  outline:3px solid var(--primary-color,#1769aa) !important;outline-offset:2px;
+}
+.intro-banner { padding-right:64px !important; }
+.ht-tab-picker { min-width:0;display:flex;flex-direction:column;gap:6px;padding:8px;margin:0 0 8px; }
+.ht-tab-picker select { width:100%;font:inherit;color:var(--primary-text-color,inherit);background:var(--card-background-color,transparent);padding:8px;border:1px solid var(--divider-color,#aaa);border-radius:8px; }
+.ht-tab-picker[hidden],.tabs[hidden],.det-tabs[hidden] { display:none !important; }
+.tabs,.det-tabs { display:flex;flex-wrap:wrap !important;overflow:visible !important;min-width:0;max-width:100%; }
+:host .tabs button,:host .det-tabs button { min-height:44px !important;min-width:44px !important;white-space:normal !important;overflow-wrap:anywhere; }
+`;
+
 class HATraceViewer extends HTMLElement {
   constructor() {
     super();
@@ -2318,7 +2426,7 @@ class HATraceViewer extends HTMLElement {
       <button class="pag-btn" data-apdir="-1" ${this.autoPage === 0 ? 'disabled' : ''} aria-label="${this._t('previousPage')}">\u2039</button>
       <span class="pag-info">${this.autoPage + 1}/${totalPages} (${this.automations.length})</span>
       <button class="pag-btn" data-apdir="1" ${this.autoPage >= totalPages - 1 ? 'disabled' : ''} aria-label="${this._t('nextPage')}">\u203A</button>
-      <select class="pag-size" id="autoPagSize">
+      <select class="pag-size" id="autoPagSize" aria-label="${this._lang==='pl'?'Automatyzacje na stronie':'Automations per page'}">
         <option value="15" ${ps === 15 ? 'selected' : ''}>15</option>
         <option value="30" ${ps === 30 ? 'selected' : ''}>30</option>
         <option value="50" ${ps === 50 ? 'selected' : ''}>50</option>
@@ -2331,7 +2439,7 @@ class HATraceViewer extends HTMLElement {
       const isChk = this.selectedAutoIds.has(a.entity);
       return `
       <div class="auto-item ${isSel ? 'sel' : ''} ${isChk ? 'chk' : ''} s-${a.status}" data-auto="${a.entity}">
-        ${this.selectMode ? `<span class="tr-cb" data-autocheck="${a.entity}">${isChk ? '\u2611' : '\u2610'}</span>` : ''}
+        ${this.selectMode ? `<label class="family-check"><input type="checkbox" data-autocheck="${_esc(a.entity)}" aria-label="${_esc(this._t('selectMode')+': '+a.name)}" ${isChk ? 'checked' : ''}></label>` : ''}
         <div style="flex:1;min-width:0">
           <div class="auto-name">${_esc(this._sanitize(a.name))}</div>
           <div class="auto-meta">
@@ -2597,7 +2705,7 @@ class HATraceViewer extends HTMLElement {
     const totalPages = Math.ceil(list.length / ps);
     if (this.tracePage >= totalPages) this.tracePage = Math.max(0, totalPages - 1);
     const pageList = list.slice(this.tracePage * ps, (this.tracePage + 1) * ps);
-    const pag = totalPages > 1 ? `<div class="pag"><button class="pag-btn" data-pdir="-1" ${this.tracePage===0?'disabled':''} aria-label="${this._t('previousPage')}">‹ Prev</button><span class="pag-info">Page ${this.tracePage+1}/${totalPages} (${list.length} traces)</span><button class="pag-btn" data-pdir="1" ${this.tracePage>=totalPages-1?'disabled':''} aria-label="${this._t('nextPage')}">Next ›</button><select class="pag-size" id="pagSize"><option value="15" ${ps===15?'selected':''}>15/page</option><option value="30" ${ps===30?'selected':''}>30/page</option><option value="50" ${ps===50?'selected':''}>50/page</option><option value="100" ${ps===100?'selected':''}>100/page</option></select></div>` : '';
+    const pag = totalPages > 1 ? `<div class="pag"><button class="pag-btn" data-pdir="-1" ${this.tracePage===0?'disabled':''} aria-label="${this._t('previousPage')}">‹ Prev</button><span class="pag-info">Page ${this.tracePage+1}/${totalPages} (${list.length} traces)</span><button class="pag-btn" data-pdir="1" ${this.tracePage>=totalPages-1?'disabled':''} aria-label="${this._t('nextPage')}">Next ›</button><select class="pag-size" id="pagSize" aria-label="${this._lang==='pl'?'Ślady na stronie':'Traces per page'}"><option value="15" ${ps===15?'selected':''}>15/page</option><option value="30" ${ps===30?'selected':''}>30/page</option><option value="50" ${ps===50?'selected':''}>50/page</option><option value="100" ${ps===100?'selected':''}>100/page</option></select></div>` : '';
     return statsHtml + pag + `<div class="list">${pageList.map(t => this._renderTraceItem(t)).join('')}</div>` + pag;
   }
 
@@ -2607,7 +2715,7 @@ class HATraceViewer extends HTMLElement {
     const showName = this.viewMode === 'all-traces' && this.groupBy !== 'automation';
     return `
       <div class="tr-item ${sel ? 'sel' : ''} ${chk ? 'chk' : ''} s-${t.status}" data-trace="${t.id}">
-        ${this.selectMode ? `<span class="tr-cb" data-tcheck="${t.id}">${chk ? '\u2611' : '\u2610'}</span>` : ''}
+        ${this.selectMode ? `<label class="family-check"><input type="checkbox" data-tcheck="${_esc(t.id)}" aria-label="${_esc(this._t('selectMode')+': '+(t.automationName||t.item_id||t.id))}" ${chk ? 'checked' : ''}></label>` : ''}
         <button type="button" class="comparison-toggle" data-compare-run="${_esc(this._comparisonIdentity(t))}" aria-pressed="${this._comparisonRuns.has(this._comparisonIdentity(t))}" aria-label="${this._comparisonText('select')}: ${_esc(t.item_id)} / ${_esc(t.id)}">${this._comparisonRuns.has(this._comparisonIdentity(t)) ? '☑' : '☐'}</button>
         <span class="tr-ico s-${t.status}">${this._ico(t.status)}</span>
         <div class="tr-info">
@@ -2721,12 +2829,14 @@ class HATraceViewer extends HTMLElement {
 
   render() {
     if (!this._hass) return;
+    const familyFocus=_rememberFamilyFocus(this), familyDrafts=_rememberFamilyDrafts(this);
     this._ensureComparisonLifecycle();
     if (!this._hass.user?.is_admin) {
       const message = this._lang === 'pl'
         ? 'Ślady automatyzacji są dostępne tylko dla administratora Home Assistant.'
         : 'Automation traces are available only to a Home Assistant administrator.';
       this.shadowRoot.innerHTML = `${this._css()}<div class="card"><div class="col-main"><div class="topbar"><span class="title">${_esc(this.config.title || this._t('traceViewer'))}</span></div><div role="status" style="padding:16px;color:var(--bento-text-secondary)">${message}</div></div></div>`;
+      _bindFamilyNavigation(this);
       return;
     }
     const activeSearch = this.shadowRoot.activeElement;
@@ -2751,8 +2861,8 @@ class HATraceViewer extends HTMLElement {
               <div class="dd-menu">
                 <label class="dd-i"><input id="redactExport" type="checkbox" ${this._redactExport !== false ? 'checked' : ''}> ${this._lang === 'pl' ? 'Usuń dane identyfikujące (do udostępniania)' : 'Redact identifying data (for sharing)'}</label>
                 <div style="padding:8px;font-size:11px">${this._lang === 'pl' ? 'Surowe dane mogą zawierać sekrety. Sprawdź plik przed udostępnieniem.' : 'Raw exports may include secrets. Review any file before sharing.'}</div>
-                ${selN > 0 ? `<div class="dd-i" data-exp="sel-json">JSON (${selN} traces ${this._t('selected')})</div><div class="dd-i" data-exp="sel-csv">CSV (${selN} traces ${this._t('selected')})</div><div class="dd-div"></div>` : ''}
-                ${this.selectedAutoIds.size > 0 ? `<div class="dd-i" data-exp="auto-json">JSON (${this.selectedAutoIds.size} ${this._t('automations')})</div><div class="dd-i" data-exp="auto-csv">CSV (${this.selectedAutoIds.size} ${this._t('automations')})</div><div class="dd-div"></div>` : ''}
+                ${selN > 0 ? `<button type="button" class="dd-i" data-exp="sel-json">JSON (${selN} traces ${this._t('selected')})</button><button type="button" class="dd-i" data-exp="sel-csv">CSV (${selN} traces ${this._t('selected')})</button><div class="dd-div"></div>` : ''}
+                ${this.selectedAutoIds.size > 0 ? `<button type="button" class="dd-i" data-exp="auto-json">JSON (${this.selectedAutoIds.size} ${this._t('automations')})</button><button type="button" class="dd-i" data-exp="auto-csv">CSV (${this.selectedAutoIds.size} ${this._t('automations')})</button><div class="dd-div"></div>` : ''}
                 
               </div>
             </div>
@@ -2767,22 +2877,22 @@ class HATraceViewer extends HTMLElement {
         </section>` : ''}
         <!-- CONTROLS -->
         <div class="cbar">
-          <div class="cg"><label>${this._t('viewMode')}</label><select id="viewSel">
+          <div class="cg"><label>${this._t('viewMode')}</label><select id="viewSel" aria-label="${this._t('viewMode')}">
             <option value="automations" ${this.viewMode === 'automations' ? 'selected' : ''}>${this._t('byAutomation')}</option>
             <option value="all-traces" ${this.viewMode === 'all-traces' ? 'selected' : ''}>${this._t('flatList')}</option>
           </select></div>
-          ${this.viewMode === 'all-traces' ? `<div class="cg"><label>${this._t('groupBy')}</label><select id="grpSel">
+          ${this.viewMode === 'all-traces' ? `<div class="cg"><label>${this._t('groupBy')}</label><select id="grpSel" aria-label="${this._t('groupBy')}">
             <option value="automation" ${this.groupBy === 'automation' ? 'selected' : ''}>${this._t('groupAutomation')}</option>
             <option value="result" ${this.groupBy === 'result' ? 'selected' : ''}>${this._t('groupResult')}</option>
             <option value="trigger" ${this.groupBy === 'trigger' ? 'selected' : ''}>${this._t('groupTrigger')}</option>
           </select></div>` : ''}
           <div class="cg"><label>${this._t('timeRange')}</label>
-            <select id="timeSel">${['all','1h','6h','24h','7d','30d','custom'].map(v =>
+            <select id="timeSel" aria-label="${this._t('timeRange')}">${['all','1h','6h','24h','7d','30d','custom'].map(v =>
               `<option value="${v}" ${this.timeRange === v ? 'selected' : ''}>${this._t('time' + v.charAt(0).toUpperCase() + v.slice(1))}</option>`
             ).join('')}</select>
           </div>
-          ${this.timeRange === 'custom' ? `<div class="cg"><input type="datetime-local" id="cfrom" value="${this.customTimeFrom || ''}" /><span>\u2192</span><input type="datetime-local" id="cto" value="${this.customTimeTo || ''}" /></div>` : ''}
-          <div class="cg"><label>${this._t('filterByStatus')}</label><select id="resSel">
+          ${this.timeRange === 'custom' ? `<div class="cg"><input type="datetime-local" id="cfrom" aria-label="${this._lang==='pl'?'Od':'From'}" value="${this.customTimeFrom || ''}" /><span>\u2192</span><input type="datetime-local" id="cto" aria-label="${this._lang==='pl'?'Do':'To'}" value="${this.customTimeTo || ''}" /></div>` : ''}
+          <div class="cg"><label>${this._t('filterByStatus')}</label><select id="resSel" aria-label="${this._t('filterByStatus')}">
             <option value="all" ${this.traceFilterResult === 'all' ? 'selected' : ''}>${this._t('allStatuses')}</option>
             <option value="success" ${this.traceFilterResult === 'success' ? 'selected' : ''}>${this._t('success')}</option>
             <option value="error" ${this.traceFilterResult === 'error' ? 'selected' : ''}>${this._t('error')}</option>
@@ -2800,14 +2910,14 @@ class HATraceViewer extends HTMLElement {
           ${this.viewMode === 'automations' ? `
           <div class="pan-left">
             <div class="pan-head"><span class="pan-title">${this._t('automations')} (${this.automations.length})</span></div>
-            <div class="search-box"><input type="text" class="sinput" id="autoSearch" placeholder="${this._t('search')}" value="${this._escHtml(this.searchQuery)}" /></div>
+            <div class="search-box"><input type="text" class="sinput" id="autoSearch" aria-label="${this._t('search')}" placeholder="${this._t('search')}" value="${this._escHtml(this.searchQuery)}" /></div>
             <div class="ctrls">
-              <div class="crow"><span class="clbl">${this._t('sortBy')}</span><select class="csel" id="sortSel">
+              <div class="crow"><span class="clbl">${this._t('sortBy')}</span><select class="csel" id="sortSel" aria-label="${this._t('sortBy')}">
                 <option value="last_triggered" ${this.sortBy === 'last_triggered' ? 'selected' : ''}>${this._t('sortLastTriggered')}</option>
                 <option value="name" ${this.sortBy === 'name' ? 'selected' : ''}>${this._t('sortName')}</option>
                 <option value="trigger_count" ${this.sortBy === 'trigger_count' ? 'selected' : ''}>${this._t('sortTriggerCount')}</option>
               </select></div>
-              <div class="crow"><span class="clbl">${this._t('filterByStatus')}</span><select class="csel" id="fltSel">
+              <div class="crow"><span class="clbl">${this._t('filterByStatus')}</span><select class="csel" id="fltSel" aria-label="${this._t('filterByStatus')}">
                 <option value="all" ${this.filterStatus === 'all' ? 'selected' : ''}>${this._t('allStatuses')}</option>
                 <option value="running" ${this.filterStatus === 'running' ? 'selected' : ''}>${this._t('statusRunning')}</option>
                 <option value="stopped" ${this.filterStatus === 'stopped' ? 'selected' : ''}>${this._t('statusStopped')}</option>
@@ -2819,7 +2929,7 @@ class HATraceViewer extends HTMLElement {
           <div class="pan-center ${this.viewMode === 'all-traces' ? 'expanded' : ''}">
             <div class="pan-head">
               <span class="pan-title">${this.viewMode === 'all-traces' ? this._t('allTraces') : this._t('traces')}</span>
-              ${this.viewMode === 'all-traces' ? `<input type="text" class="sinput-sm" id="trSearch" placeholder="${this._t('searchTraces')}" value="${this._escHtml(this.searchQuery)}" />` : ''}
+              ${this.viewMode === 'all-traces' ? `<input type="text" class="sinput-sm" id="trSearch" aria-label="${this._t('searchTraces')}" placeholder="${this._t('searchTraces')}" value="${this._escHtml(this.searchQuery)}" />` : ''}
             </div>
             ${this._renderComparisonPicker()}
             ${this._renderTracesList()}
@@ -2834,6 +2944,8 @@ class HATraceViewer extends HTMLElement {
       </div>
     </div>`;
     this._bindEvents();
+    _restoreFamilyDrafts(this,familyDrafts);
+    _bindFamilyNavigation(this,familyFocus);
     // Apply compact classes immediately after render based on current width
     this._applyCompactClasses();
     if (searchSelection) {
@@ -2996,6 +3108,8 @@ class HATraceViewer extends HTMLElement {
       this._saveSetting('autoPageSize', this.autoPageSize); this.render();
     });
 
+    // Keep native label activation from also opening/toggling its containing row.
+    $$('.family-check').forEach(label=>label.addEventListener('click',e=>e.stopPropagation()));
     // Auto checkboxes
     $$('[data-autocheck]').forEach(el => el.addEventListener('click', e => {
       e.stopPropagation();
@@ -3030,7 +3144,8 @@ class HATraceViewer extends HTMLElement {
     $$('.dtab').forEach(tab => tab.addEventListener('click', () => {
       this.detailTab = tab.dataset.dtab;
       this.render();
-      this.shadowRoot.querySelector(`[data-dtab="${this.detailTab}"]`)?.focus({ preventScroll: true });
+      const nav=this.shadowRoot.querySelector('.det-tabs');
+      (nav?.hidden ? this.shadowRoot.getElementById('ha-tools-tab-picker') : this.shadowRoot.querySelector(`[data-dtab="${this.detailTab}"]`))?.focus({ preventScroll:true });
     }));
 
     // Copy JSON
@@ -3589,6 +3704,23 @@ class HATraceViewer extends HTMLElement {
 .card.compact-xs .stats, .card.compact-xs .stats-grid, .card.compact-xs .summary-grid, .card.compact-xs .stat-cards, .card.compact-xs .kpi-grid, .card.compact-xs .metrics-grid { grid-template-columns: 1fr 1fr; }
 .card.compact-xs .stat-val, .card.compact-xs .kpi-val, .card.compact-xs .metric-val { font-size: 16px; }
 
+${_FAMILY_CONTROL_CSS}
+:host { container-type:inline-size;container-name:family-trace;min-width:0; }
+.col-main,.panels { min-width:0;max-width:100%; }
+:host .tgroup-h { min-height:44px;min-width:44px; }
+:host .card .pan-left,:host .card .pan-center,:host .card .pan-right { display:flex !important;min-width:0 !important; }
+.family-check { width:44px;height:44px;flex:none;justify-content:center; }
+.family-check input { margin:0; }
+:host .dd-i[data-exp] { width:100%;text-align:left;font:inherit;border:0;border-radius:0;background:transparent;color:inherit; }
+@container family-trace (width < 1200px) {
+  .panels { flex-direction:column; }
+  .pan-left,.pan-center,.pan-right { width:100% !important;max-height:none !important;min-width:0 !important;flex:auto; }
+  .pan-right { min-height:300px;border-top:1px solid var(--bento-border); }
+  .topbar,.topbar-r,.controls,.crow,.pag { flex-wrap:wrap; }
+  .topbar-r,.cg { min-width:0;max-width:100%; }
+  .pan-head { flex-wrap:wrap; }
+}
+
 </style>`;
   }
 
@@ -3599,6 +3731,7 @@ class HATraceViewer extends HTMLElement {
     // ResizeObserver for mobile view in small dashboard cards
     this._resizeObserver = new ResizeObserver(() => this._applyCompactClasses());
     this._resizeObserver.observe(this);
+    _bindFamilyNavigation(this);
   }
   disconnectedCallback() {
     this._invalidateComparison(true);
@@ -3609,6 +3742,7 @@ class HATraceViewer extends HTMLElement {
     this._comparisonConnection?.removeEventListener?.('ready', this._comparisonReadyHandler);
     this._comparisonConnection = null;
     this._accessEpoch++; this._traceLoadToken = null; this._detailLoadToken = null;
+    _disconnectFamilyNavigation(this);this._familyNavWidth=null;
     // Canceled requests cannot finish their loading state after reconnection.
     // Keep completed details, but clear a selection whose request was canceled.
     if (this.selectedTrace && !this.traceDetail) this.selectedTrace = null;
@@ -3648,12 +3782,13 @@ class HaTraceViewerEditor extends HTMLElement {
       <style>
             :host { display:block; padding:16px; }
             h3 { margin:0 0 16px; font-size:15px; font-weight:600; color:var(--bento-text, var(--primary-text-color,#1e293b)); }
-            input { outline:none; transition:border-color .2s; }
+            input { box-sizing:border-box;min-height:44px;min-width:44px;max-width:100%;transition:border-color .2s; }
+            input:focus-visible { outline:3px solid var(--primary-color,#1769aa);outline-offset:2px; }
             input:focus { border-color:var(--bento-primary, var(--primary-color,#3b82f6)); }
         </style>
       <h3>Trace Viewer</h3>
             <div style="margin-bottom:12px;">
-              <label style="display:block;font-weight:500;margin-bottom:4px;font-size:13px;">Title</label>
+              <label for="cf_title" style="display:block;font-weight:500;margin-bottom:4px;font-size:13px;">${(typeof this._config?.language === 'string' ? this._config.language : navigator.language || 'en').startsWith('pl') ? 'Tytuł' : 'Title'}</label>
               <input type="text" id="cf_title" value="${_esc(this._config?.title || 'Trace Viewer')}"
                 style="width:100%;padding:8px 12px;border:1px solid var(--divider-color,#e2e8f0);border-radius:8px;background:var(--card-background-color,#fff);color:var(--primary-text-color,#1e293b);font-size:14px;box-sizing:border-box;">
             </div>
