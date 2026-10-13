@@ -2201,20 +2201,9 @@ class HATraceViewer extends HTMLElement {
     for (const t of this._allTraces) {
       const traceKey = this._traceKey(t.item_id);
       const auto = this._rawAutomations.find(a => this._traceKey(a.automationId) === traceKey);
-      const st = t.timestamp?.start ? new Date(t.timestamp.start) : new Date();
-      const ft = t.timestamp?.finish ? new Date(t.timestamp.finish) : st;
-      this._allFlatTraces.push({
-        id: t.run_id, item_id: t.item_id,
-        automationEntity: auto?.entity || t.item_id,
-        automationName: auto?.name || t.item_id,
-        timestamp: st, finishTime: ft,
-        status: this._traceStatus(t),
-        duration: ft - st,
-        lastStep: t.last_step || '', scriptExecution: t.script_execution || '',
-        trigger: t.trigger || 'unknown', raw: t
-      });
+      this._allFlatTraces.push(this._traceSummary(t, auto, auto?.entity || t.item_id, t.item_id));
     }
-    this._allFlatTraces.sort((a, b) => b.timestamp - a.timestamp);
+    this._allFlatTraces.sort((a, b) => this._traceTimeOrder(a, b));
 
     this.applyFiltersAndSort();
     this.render();
@@ -2222,12 +2211,56 @@ class HATraceViewer extends HTMLElement {
   }
 
   _traceStatus(t) {
+    if (t.script_execution === 'error' || t.script_execution === 'any_error') return 'error';
     if (t.state === 'stopped' && t.script_execution === 'finished') return 'success';
-    if (t.state === 'stopped' && t.script_execution === 'error') return 'error';
     if (t.state === 'running') return 'running';
     if (t.script_execution === 'aborted') return 'aborted';
-    if (t.script_execution === 'error' || t.script_execution === 'any_error') return 'error';
-    return 'success';
+    return 'unconfirmed';
+  }
+
+  _traceResult(status) {
+    return createUiV3({ language: this._lang }).status(
+      status === 'success' || status === 'error' ? status : 'unconfirmed');
+  }
+
+  _traceResultHtml(status) {
+    return createUiV3({ language: this._lang }).statusHtml(this._traceResult(status).code);
+  }
+
+  _traceStatusLabel(status) {
+    const result = this._traceResult(status);
+    const domain = status === 'running' || status === 'aborted' ? ` · ${this._t(status)}` : '';
+    return `${result.icon} ${result.label}${domain}`;
+  }
+
+  _matchesTraceResult(trace) {
+    const filter = this.traceFilterResult;
+    if (filter === 'all') return true;
+    if (filter === 'unconfirmed' || filter === 'unknown') return this._traceResult(trace.status).code === 'unconfirmed';
+    return trace.status === filter;
+  }
+
+  _traceResultOptions() {
+    const values = ['all', 'success', 'error', 'unconfirmed', 'running', 'aborted'];
+    // Keep a restored legacy/unknown selection visible instead of silently selecting All.
+    if (!values.includes(this.traceFilterResult)) values.push(this.traceFilterResult);
+    return values.map(value => {
+      const label = value === 'all' ? this._t('allStatuses')
+        : values.indexOf(value) < 6 || value === 'unknown' ? this._traceStatusLabel(value) : String(value);
+      return `<option value="${_esc(value)}" ${this.traceFilterResult === value ? 'selected' : ''}>${_esc(label)}</option>`;
+    }).join('');
+  }
+
+  _traceDate(value) {
+    if (typeof value !== 'string' || !value) return null;
+    const date = new Date(value);
+    return Number.isFinite(date.getTime()) ? date : null;
+  }
+
+  _traceTimeOrder(a, b) {
+    if (a.timestamp === null) return b.timestamp === null ? 0 : 1;
+    if (b.timestamp === null) return -1;
+    return b.timestamp - a.timestamp;
   }
 
   // ============================================================
@@ -2247,7 +2280,7 @@ class HATraceViewer extends HTMLElement {
   _filterByTime(traces) {
     const c = this._timeCutoff(), e = this._timeEnd();
     if (!c && !e) return traces;
-    return traces.filter(t => (!c || t.timestamp >= c) && (!e || t.timestamp <= e));
+    return traces.filter(t => t.timestamp !== null && Number.isFinite(+t.timestamp) && (!c || t.timestamp >= c) && (!e || t.timestamp <= e));
   }
 
   applyFiltersAndSort() {
@@ -2267,7 +2300,7 @@ class HATraceViewer extends HTMLElement {
 
   _filteredFlat() {
     let t = this._filterByTime([...this._allFlatTraces]);
-    if (this.traceFilterResult !== 'all') t = t.filter(x => x.status === this.traceFilterResult);
+    t = t.filter(x => this._matchesTraceResult(x));
     if (this.searchQuery) {
       const q = this.searchQuery.toLowerCase();
       t = t.filter(x => x.automationName.toLowerCase().includes(q) || x.trigger.toLowerCase().includes(q));
@@ -2289,7 +2322,8 @@ class HATraceViewer extends HTMLElement {
     const n = traces.length;
     const ok = traces.filter(t => t.status === 'success').length;
     const err = traces.filter(t => t.status === 'error').length;
-    const avg = n ? Math.round(traces.reduce((s, t) => s + t.duration, 0) / n) : 0;
+    const measured = traces.filter(t => Number.isFinite(t.duration) && t.duration >= 0);
+    const avg = measured.length ? Math.round(measured.reduce((sum, t) => sum + t.duration, 0) / measured.length) : null;
     return { n, ok, err, avg, rate: n ? Math.round((ok / n) * 100) : 0 };
   }
 
@@ -2311,6 +2345,7 @@ class HATraceViewer extends HTMLElement {
   }
 
   _relTime(d) {
+    if (!d || !Number.isFinite(+d)) return this._lang === 'pl' ? 'Brak daty' : 'Date unavailable';
     const m = Math.floor((Date.now() - d) / 60000);
     if (m < 1) return this._t('justNow');
     if (m < 60) return `${m}${this._t('minutesAgo')}`;
@@ -2320,16 +2355,19 @@ class HATraceViewer extends HTMLElement {
   }
 
   _fmtDur(ms) {
+    if (!Number.isFinite(ms) || ms < 0) return this._lang === 'pl' ? 'Brak pomiaru' : 'Not measured';
     if (ms < 1000) return `${Math.round(ms)}ms`;
     if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
     return `${(ms / 60000).toFixed(1)}m`;
   }
 
   _fmtTime(d) {
+    if (!d || !Number.isFinite(+d)) return this._lang === 'pl' ? 'Brak daty' : 'Date unavailable';
     return d.toLocaleString(undefined, { month: 'long', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
   }
 
   _fmtTimeShort(d) {
+    if (!d || !Number.isFinite(+d)) return this._lang === 'pl' ? 'Brak daty' : 'Date unavailable';
     return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   }
 
@@ -2347,13 +2385,13 @@ class HATraceViewer extends HTMLElement {
   }
 
   _traceSummary(t, auto, entity, fallbackItemId) {
-    const st = t.timestamp?.start ? new Date(t.timestamp.start) : new Date();
-    const ft = t.timestamp?.finish ? new Date(t.timestamp.finish) : st;
+    const st = this._traceDate(t.timestamp?.start);
+    const ft = this._traceDate(t.timestamp?.finish);
     return {
       id: t.run_id, item_id: t.item_id ?? fallbackItemId, automationEntity: entity,
       automationName: auto?.name || entity,
       timestamp: st, finishTime: ft,
-      status: this._traceStatus(t), duration: ft - st,
+      status: this._traceStatus(t), duration: st && ft && ft >= st ? ft - st : null,
       lastStep: t.last_step || '', scriptExecution: t.script_execution || '',
       trigger: t.trigger || 'unknown', raw: t
     };
@@ -2361,9 +2399,9 @@ class HATraceViewer extends HTMLElement {
 
   _applyTraceBucket(bucket, auto, entity, aid) {
     let list = bucket.traces.map(t => this._traceSummary(t, auto, entity, aid))
-      .sort((a, b) => b.timestamp - a.timestamp);
+      .sort((a, b) => this._traceTimeOrder(a, b));
     this.traces = this._filterByTime(list);
-    if (this.traceFilterResult !== 'all') this.traces = this.traces.filter(x => x.status === this.traceFilterResult);
+    this.traces = this.traces.filter(x => this._matchesTraceResult(x));
   }
 
   async _loadTraces(entity) {
@@ -2397,7 +2435,7 @@ class HATraceViewer extends HTMLElement {
         if (bucket.lastRun && (!auto.lastTriggered || bucket.lastRun > auto.lastTriggered)) auto.lastTriggered = bucket.lastRun;
         this._allFlatTraces = this._allFlatTraces.filter(t => this._traceKey(t.item_id) !== aidKey)
           .concat(bucket.traces.map(t => this._traceSummary(t, auto, entity, aid)))
-          .sort((a, b) => b.timestamp - a.timestamp);
+          .sort((a, b) => this._traceTimeOrder(a, b));
         this.applyFiltersAndSort();
         this._applyTraceBucket(bucket, auto, entity, aid);
       }
@@ -2563,12 +2601,13 @@ class HATraceViewer extends HTMLElement {
       });
     }
 
-    // Add "finished" step
-    if (trace.finishTime) {
+    // Only a recorded finish can create a completion step; outcome is independent of timing.
+    if (trace.finishTime && Number.isFinite(+trace.finishTime)) {
+      const result = this._traceResult(trace.status);
       steps.push({
-        key: 'finished', category: 'result', icon: '\u23F9',
-        description: `${this._t('finishedAt')} ${this._fmtTime(trace.finishTime)} (${this._t('runtime')}: ${this._fmtDur(trace.duration)})`,
-        details: {}, status: trace.status === 'success' ? 'success' : 'error',
+        key: 'finished', category: 'result', icon: result.icon,
+        description: `${result.label} · ${this._t('finishedAt')} ${this._fmtTime(trace.finishTime)} (${this._t('runtime')}: ${this._fmtDur(trace.duration)})`,
+        details: {}, status: result.code,
         duration: 0, timestamp: trace.finishTime, error: null
       });
     }
@@ -2661,7 +2700,7 @@ class HATraceViewer extends HTMLElement {
         if (step.status === 'skipped') { fill = 'rgba(100,116,139,0.08)'; stroke = 'var(--bento-text-secondary, #94A3B8)'; textFill = 'var(--bento-text-secondary, #94A3B8)'; }
         else { fill = 'rgba(245,158,11,0.12)'; stroke = 'var(--bento-warning, #F59E0B)'; textFill = 'var(--tc, #B45309)'; }
       }
-      else if (step.category === 'result') { fill = step.status === 'success' ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)'; stroke = step.status === 'success' ? 'var(--bento-success, #10B981)' : 'var(--bento-error, #EF4444)'; textFill = stroke; }
+      else if (step.category === 'result') { fill = step.status === 'success' ? 'rgba(16,185,129,0.12)' : step.status === 'error' ? 'rgba(239,68,68,0.12)' : 'rgba(173,82,0,0.10)'; stroke = this._traceResultColor(step.status); textFill = stroke; }
       else if (step.status === 'error') { fill = 'rgba(239,68,68,0.12)'; stroke = 'var(--bento-error, #EF4444)'; textFill = 'var(--bento-error, #EF4444)'; }
       else { fill = 'rgba(16,185,129,0.1)'; stroke = 'var(--bento-success, #10B981)'; textFill = 'var(--tc, #1E293B)'; }
 
@@ -2804,9 +2843,7 @@ class HATraceViewer extends HTMLElement {
     const full = this._normalizedExportDetail(row), data = full?.data;
     const state = data?.run_state || summary?.run_state;
     const outcome = summary?.script_execution;
-    const status = state === 'running' ? 'running' : outcome === 'finished' ? 'success'
-      : ['error', 'any_error'].includes(outcome) ? 'error' : outcome === 'aborted' ? 'aborted'
-      : state === 'stopped' ? 'stopped' : 'unknown';
+    const status = this._traceStatus({ state, script_execution: outcome });
     const privateText = value => typeof value === 'string' && value.length > 0 && value.length <= 256 ? value : null;
     const record = { run_alias: 'Run ' + (index + 1), run_id: 'Run ' + (index + 1), automation: names.get(row.item_id),
       automation_alias: names.get(row.item_id), redacted: true, status,
@@ -2843,7 +2880,7 @@ class HATraceViewer extends HTMLElement {
     const sourceLimit = pl
       ? 'Lokalny zakres karty: lista może zawierać historię przeglądarki. Szczegóły wyłącznie z bieżącego potwierdzonego źródła. Brak pobierania; null oznacza brak danych. Nie dowodzi pełnego przebiegu.'
       : 'Local card scope: the list may include browser history. Details only from the current confirmed source. No fetching; null means missing data. Does not prove a complete execution.';
-    let partial = records.some(record => record.detail.status !== 'available' || record.duration_ms === null || record.status === 'running' || record.status === 'unknown');
+    let partial = records.some(record => record.detail.status !== 'available' || record.duration_ms === null || this._traceResult(record.status).code === 'unconfirmed');
     const report = { schema: 'ha-trace-viewer-export-v1', status: 'success', scope,
       private_fields: draft.includePrivate, record_count: records.length, included, excluded,
       source_limit: sourceLimit, records };
@@ -2950,8 +2987,10 @@ class HATraceViewer extends HTMLElement {
 
   // ============================================================
 
-  _ico(s) { return s === 'success' ? '\u2714' : s === 'running' ? '\u21BB' : s === 'error' ? '\u274C' : s === 'aborted' ? '\u23F9' : '\u2753'; }
-  _sLabel(s) { return this._t(s) || s; }
+  _traceResultColor(status) {
+    return status === 'success' ? 'var(--bento-success, #10B981)'
+      : status === 'error' ? 'var(--bento-error, #EF4444)' : 'var(--bento-warning, #ad5200)';
+  }
 
   // ============================================================
 
@@ -3065,7 +3104,7 @@ class HATraceViewer extends HTMLElement {
 
   _toggleComparisonRun(run) {
     if (!this._hass?.user?.is_admin || typeof run?.item_id !== 'string' || !run.item_id
-      || typeof run?.id !== 'string' || !run.id || !Number.isFinite(+run.timestamp)) return;
+      || typeof run?.id !== 'string' || !run.id || run.timestamp == null || !Number.isFinite(+run.timestamp)) return;
     const key = this._comparisonIdentity(run);
     if (this._comparisonRuns.has(key)) {
       this._invalidateComparison(); this._comparisonRuns.delete(key);
@@ -3237,7 +3276,7 @@ class HATraceViewer extends HTMLElement {
       return statsHtml + `<div class="list">${groups.map(g => `
         <div class="tgroup">
           <button type="button" class="tgroup-h" data-group="${_esc(g.name)}" role="button" tabindex="0" aria-expanded="true" aria-label="${_esc((this._lang === 'pl' ? 'Grupa przebiegów: ' : 'Trace group: ') + g.name)}">
-            <span class="tg-tog">\u25BC</span><span class="tg-name">${_esc(this._sanitize(g.name))}</span>
+            <span class="tg-tog">\u25BC</span><span class="tg-name">${_esc(this.groupBy === 'result' ? this._traceStatusLabel(g.name) : this._sanitize(g.name))}</span>
             <span class="tg-cnt">${g.count}</span>
           </button>
           <div class="tgroup-items">${g.traces.map(t => this._renderTraceItem(t)).join('')}</div>
@@ -3260,10 +3299,11 @@ class HATraceViewer extends HTMLElement {
       <div class="tr-item ${sel ? 'sel' : ''} ${chk ? 'chk' : ''} s-${t.status}" data-trace="${_esc(t.id)}">
         ${this.selectMode ? `<label class="family-check"><input type="checkbox" data-tcheck="${_esc(t.id)}" aria-label="${_esc(this._t('selectMode')+': '+(t.automationName||t.item_id||t.id))}" ${chk ? 'checked' : ''}></label>` : ''}
         <button type="button" class="comparison-toggle" data-compare-run="${_esc(this._comparisonIdentity(t))}" aria-pressed="${this._comparisonRuns.has(this._comparisonIdentity(t))}" aria-label="${this._comparisonText('select')}: ${_esc(t.item_id)} / ${_esc(t.id)}">${this._comparisonRuns.has(this._comparisonIdentity(t)) ? '☑' : '☐'}</button>
-        <button type="button" class="family-row-action family-trace-action" data-trace-action="${_esc(t.id)}" role="button" tabindex="0" ${this.selectMode ? `aria-pressed="${chk}"` : ''} aria-label="${_esc((this._lang === 'pl' ? (this.selectMode ? 'Wybierz przebieg: ' : 'Otwórz przebieg: ') : (this.selectMode ? 'Select trace: ' : 'Open trace: ')) + (t.automationName || t.item_id || t.id) + ' · ' + this._fmtTimeShort(t.timestamp))}"><span class="tr-ico s-${t.status}">${this._ico(t.status)}</span>
+        <button type="button" class="family-row-action family-trace-action" data-trace-action="${_esc(t.id)}" role="button" tabindex="0" ${this.selectMode ? `aria-pressed="${chk}"` : ''} aria-label="${_esc((this._lang === 'pl' ? (this.selectMode ? 'Wybierz przebieg: ' : 'Otwórz przebieg: ') : (this.selectMode ? 'Select trace: ' : 'Open trace: ')) + (t.automationName || t.item_id || t.id) + ' · ' + this._fmtTimeShort(t.timestamp))}">
         <span class="tr-info">
           ${showName ? `<span class="tr-auto" style="display:block">${_esc(t.automationName)}</span>` : ''}
-          <span class="tr-time" style="display:block" data-ts="${t.timestamp.toISOString()}">${this._fmtTimeShort(t.timestamp)} \u00B7 ${this._relTime(t.timestamp)}</span>
+          <span class="tr-time" style="display:block" data-ts="${t.timestamp?.toISOString() || ''}">${this._fmtTimeShort(t.timestamp)} \u00B7 ${this._relTime(t.timestamp)}</span>
+          ${this._traceResultHtml(t.status)}${t.status === 'running' || t.status === 'aborted' ? `<span class="tr-domain"> ${_esc(this._t(t.status))}</span>` : ''}
           <span class="tr-trig" style="display:block">${_esc(t.lastStep || t.scriptExecution || t.trigger)}</span>
         </span>
         <span class="tr-dur">${this._fmtDur(t.duration)}</span></button>
@@ -3290,7 +3330,7 @@ class HATraceViewer extends HTMLElement {
         activePane = steps.map((s, i) => `
           <div class="tl-step s-${s.status}">
             <div class="tl-head">
-              <div class="tl-num" style="background:${s.category === 'trigger' ? 'var(--bento-primary, #3B82F6)' : s.category === 'condition' ? 'var(--bento-warning, #F59E0B)' : s.category === 'result' ? (s.status === 'success' ? 'var(--bento-success, #10B981)' : 'var(--bento-error, #EF4444)') : s.status === 'error' ? 'var(--bento-error, #EF4444)' : 'var(--bento-success, #10B981)'}">${s.icon}</div>
+              <div class="tl-num" style="background:${s.category === 'trigger' ? 'var(--bento-primary, #3B82F6)' : s.category === 'condition' ? 'var(--bento-warning, #F59E0B)' : s.category === 'result' ? this._traceResultColor(s.status) : s.status === 'error' ? 'var(--bento-error, #EF4444)' : 'var(--bento-success, #10B981)'}">${s.icon}</div>
               <div class="tl-title">
                 <span class="tl-cat">${_esc(s.category.toUpperCase())}</span>
                 <span class="tl-desc">${_esc(s.description)}</span>
@@ -3342,8 +3382,8 @@ class HATraceViewer extends HTMLElement {
           <div class="det-title">${_esc(trace.automationName || this._t('traceDetail'))}</div>
           <div class="det-time">${this._t('executedAt')} ${this._fmtTime(trace.timestamp)}</div>
         </div>
-        <div class="det-badge s-${trace.status}">
-          ${this._ico(trace.status)} ${this._sLabel(trace.status)}
+        <div class="det-badge">
+          ${this._traceResultHtml(trace.status)}${trace.status === 'running' || trace.status === 'aborted' ? `<span> ${_esc(this._t(trace.status))}</span>` : ''}
           <span class="det-dur">${this._fmtDur(trace.duration)}</span>
         </div>
       </div>
@@ -3440,9 +3480,7 @@ class HATraceViewer extends HTMLElement {
           </div>
           ${this.timeRange === 'custom' ? `<div class="cg"><input type="datetime-local" id="cfrom" aria-label="${this._lang==='pl'?'Od':'From'}" value="${this.customTimeFrom || ''}" /><span>\u2192</span><input type="datetime-local" id="cto" aria-label="${this._lang==='pl'?'Do':'To'}" value="${this.customTimeTo || ''}" /></div>` : ''}
           <div class="cg"><label>${this._t('filterByStatus')}</label><select id="resSel" aria-label="${this._t('filterByStatus')}">
-            <option value="all" ${this.traceFilterResult === 'all' ? 'selected' : ''}>${this._t('allStatuses')}</option>
-            <option value="success" ${this.traceFilterResult === 'success' ? 'selected' : ''}>${this._t('success')}</option>
-            <option value="error" ${this.traceFilterResult === 'error' ? 'selected' : ''}>${this._t('error')}</option>
+            ${this._traceResultOptions()}
           </select></div>
           <div class="cg cg-r">
             <button class="btn-s ${this.selectMode ? 'btn-act' : ''}" id="selBtn">\u2611 ${this.selectMode ? this._t('cancel') : this._t('selectMode')}</button>
@@ -3717,6 +3755,7 @@ class HATraceViewer extends HTMLElement {
 
   _css() {
     return `<style>${haToolsBentoCSS}
+${createUiV3({ language: this._lang }).css}
 
 .comparison-picker, .trace-comparison { container-type: inline-size; min-width: 0; max-width: 100%; padding: 12px; box-sizing: border-box; }
 .trace-comparison { border: 1px solid var(--bento-border); border-radius: 12px; margin-top: 12px; background: var(--bento-card); }
@@ -4102,6 +4141,7 @@ class HATraceViewer extends HTMLElement {
 .tl-step:hover { box-shadow: var(--shadow); }
 .tl-step.s-success { border-left-color: var(--bento-success); }
 .tl-step.s-error { border-left-color: var(--bento-error); }
+.tl-step.s-unconfirmed { border-left-color: var(--bento-warning, #ad5200); }
 .tl-step.s-skipped { border-left-color: var(--bento-text-secondary); opacity: 0.6; }
 .tl-head { display: flex; gap: 10px; align-items: center; }
 .tl-num {
