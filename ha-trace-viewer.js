@@ -2906,6 +2906,7 @@ class HATraceViewer extends HTMLElement {
             <option value="all-traces" ${this.viewMode === 'all-traces' ? 'selected' : ''}>${this._t('flatList')}</option>
           </select></div>
           ${this.viewMode === 'all-traces' ? `<div class="cg"><label>${this._t('groupBy')}</label><select id="grpSel" aria-label="${this._t('groupBy')}">
+            <option value="none" ${this.groupBy === 'none' ? 'selected' : ''}>${this._lang === 'pl' ? 'Bez grupowania' : 'No grouping'}</option>
             <option value="automation" ${this.groupBy === 'automation' ? 'selected' : ''}>${this._t('groupAutomation')}</option>
             <option value="result" ${this.groupBy === 'result' ? 'selected' : ''}>${this._t('groupResult')}</option>
             <option value="trigger" ${this.groupBy === 'trigger' ? 'selected' : ''}>${this._t('groupTrigger')}</option>
