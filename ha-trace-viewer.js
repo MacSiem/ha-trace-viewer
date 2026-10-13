@@ -1397,6 +1397,26 @@ const _FAMILY_CONTROL_CSS = `
 :host .tabs button,:host .det-tabs button { min-height:44px !important;min-width:44px !important;white-space:normal !important;overflow-wrap:anywhere; }
 `;
 
+
+// These rows contain other controls: give only the focused row button semantics.
+function _bindFamilyRowKeys(root, selector) {
+  root.querySelectorAll(selector).forEach(row => row.addEventListener('keydown', event => {
+    if (event.target !== row || !['Enter', ' '].includes(event.key) || event.altKey || event.ctrlKey || event.metaKey) return;
+    event.preventDefault();
+    if (!event.repeat) row.click();
+  }));
+}
+function _rememberFamilyRowFocus(card, kinds) {
+  const active = card.shadowRoot.activeElement;
+  const kind = active && kinds.find(([selector]) => active.matches(selector));
+  return kind ? { selector:kind[0], attr:kind[1], key:active.getAttribute(kind[1]) } : null;
+}
+function _restoreFamilyRowFocus(card, saved) {
+  if (!saved) return;
+  Array.from(card.shadowRoot.querySelectorAll(saved.selector))
+    .find(row => row.getAttribute(saved.attr) === saved.key)?.focus({preventScroll:true});
+}
+
 class HATraceViewer extends HTMLElement {
   constructor() {
     super();
@@ -2438,7 +2458,7 @@ class HATraceViewer extends HTMLElement {
       const isSel = this.selectedAutomation === a.entity;
       const isChk = this.selectedAutoIds.has(a.entity);
       return `
-      <div class="auto-item ${isSel ? 'sel' : ''} ${isChk ? 'chk' : ''} s-${a.status}" data-auto="${a.entity}">
+      <div class="auto-item ${isSel ? 'sel' : ''} ${isChk ? 'chk' : ''} s-${a.status}" data-auto="${_esc(a.entity)}" role="button" tabindex="0" ${this.selectMode ? `aria-pressed="${isChk}"` : ''} aria-label="${_esc((this._lang === 'pl' ? (this.selectMode ? 'Wybierz automatyzację: ' : 'Otwórz automatyzację: ') : (this.selectMode ? 'Select automation: ' : 'Open automation: ')) + a.name)}">
         ${this.selectMode ? `<label class="family-check"><input type="checkbox" data-autocheck="${_esc(a.entity)}" aria-label="${_esc(this._t('selectMode')+': '+a.name)}" ${isChk ? 'checked' : ''}></label>` : ''}
         <div style="flex:1;min-width:0">
           <div class="auto-name">${_esc(this._sanitize(a.name))}</div>
@@ -2693,7 +2713,7 @@ class HATraceViewer extends HTMLElement {
       const groups = this._groupTraces(list);
       return statsHtml + `<div class="list">${groups.map(g => `
         <div class="tgroup">
-          <div class="tgroup-h" data-group="${_esc(g.name)}">
+          <div class="tgroup-h" data-group="${_esc(g.name)}" role="button" tabindex="0" aria-expanded="true" aria-label="${_esc((this._lang === 'pl' ? 'Grupa przebiegów: ' : 'Trace group: ') + g.name)}">
             <span class="tg-tog">\u25BC</span><span class="tg-name">${_esc(this._sanitize(g.name))}</span>
             <span class="tg-cnt">${g.count}</span>
           </div>
@@ -2714,7 +2734,7 @@ class HATraceViewer extends HTMLElement {
     const chk = this.selectedTraceIds.has(t.id);
     const showName = this.viewMode === 'all-traces' && this.groupBy !== 'automation';
     return `
-      <div class="tr-item ${sel ? 'sel' : ''} ${chk ? 'chk' : ''} s-${t.status}" data-trace="${t.id}">
+      <div class="tr-item ${sel ? 'sel' : ''} ${chk ? 'chk' : ''} s-${t.status}" data-trace="${_esc(t.id)}" role="button" tabindex="0" ${this.selectMode ? `aria-pressed="${chk}"` : ''} aria-label="${_esc((this._lang === 'pl' ? (this.selectMode ? 'Wybierz przebieg: ' : 'Otwórz przebieg: ') : (this.selectMode ? 'Select trace: ' : 'Open trace: ')) + (t.automationName || t.item_id || t.id) + ' · ' + this._fmtTimeShort(t.timestamp))}">
         ${this.selectMode ? `<label class="family-check"><input type="checkbox" data-tcheck="${_esc(t.id)}" aria-label="${_esc(this._t('selectMode')+': '+(t.automationName||t.item_id||t.id))}" ${chk ? 'checked' : ''}></label>` : ''}
         <button type="button" class="comparison-toggle" data-compare-run="${_esc(this._comparisonIdentity(t))}" aria-pressed="${this._comparisonRuns.has(this._comparisonIdentity(t))}" aria-label="${this._comparisonText('select')}: ${_esc(t.item_id)} / ${_esc(t.id)}">${this._comparisonRuns.has(this._comparisonIdentity(t)) ? '☑' : '☐'}</button>
         <span class="tr-ico s-${t.status}">${this._ico(t.status)}</span>
@@ -2830,6 +2850,7 @@ class HATraceViewer extends HTMLElement {
   render() {
     if (!this._hass) return;
     const familyFocus=_rememberFamilyFocus(this), familyDrafts=_rememberFamilyDrafts(this);
+    const familyRowFocus=_rememberFamilyRowFocus(this, [['.auto-item[data-auto]','data-auto'],['.tr-item[data-trace]','data-trace'],['.tgroup-h[data-group]','data-group']]);
     this._ensureComparisonLifecycle();
     if (!this._hass.user?.is_admin) {
       const message = this._lang === 'pl'
@@ -2946,6 +2967,7 @@ class HATraceViewer extends HTMLElement {
     this._bindEvents();
     _restoreFamilyDrafts(this,familyDrafts);
     _bindFamilyNavigation(this,familyFocus);
+    _restoreFamilyRowFocus(this,familyRowFocus);
     // Apply compact classes immediately after render based on current width
     this._applyCompactClasses();
     if (searchSelection) {
@@ -3138,7 +3160,11 @@ class HATraceViewer extends HTMLElement {
       e.stopPropagation(); const id = el.dataset.tcheck;
       this.selectedTraceIds.has(id) ? this.selectedTraceIds.delete(id) : this.selectedTraceIds.add(id); this.render();
     }));
-    $$('.tgroup-h').forEach(h => h.addEventListener('click', () => h.parentElement.classList.toggle('collapsed')));
+    $$('.tgroup-h').forEach(h => h.addEventListener('click', () => {
+      const collapsed=h.parentElement.classList.toggle('collapsed');
+      h.setAttribute('aria-expanded',String(!collapsed));
+    }));
+    _bindFamilyRowKeys(this.shadowRoot, '.auto-item[data-auto],.tr-item[data-trace],.tgroup-h');
 
     // Detail tabs
     $$('.dtab').forEach(tab => tab.addEventListener('click', () => {
