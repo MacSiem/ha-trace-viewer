@@ -83,3 +83,22 @@ test('existing trace and automation selections use named native checkbox labels'
  const checkbox=f.card.shadowRoot.querySelector('[data-autocheck]');assert.equal(checkbox.type,'checkbox');assert.equal(checkbox.labels.length,1);assert.ok(checkbox.getAttribute('aria-label'));checkbox.labels[0].click();assert.equal(f.card.selectedAutoIds.has('automation.synthetic'),true);assert.equal(f.calls.length,0);
  }finally{f.card.remove();f.dom.window.close();}
 });
+
+
+test('automation selection works with Enter/Space, ignores key repeats and retains row focus',()=>{
+ const f=fixture();try{f.card.selectMode=true;f.card.automations=[{entity:'automation.synthetic',name:'Synthetic automation',status:'stopped',lastTriggered:null,triggerCount:0}];f.card.render();const row=()=>f.card.shadowRoot.querySelector('.auto-item');row().focus();row().dispatchEvent(new f.dom.window.KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
+  assert.equal(f.card.selectedAutoIds.has('automation.synthetic'),true);assert.equal(row().getAttribute('role'),'button');assert.equal(row().tabIndex,0);assert.equal(row().getAttribute('aria-pressed'),'true');assert.equal(f.card.shadowRoot.activeElement,row());
+  row().dispatchEvent(new f.dom.window.KeyboardEvent('keydown',{key:' ',bubbles:true,cancelable:true,repeat:true}));assert.equal(f.card.selectedAutoIds.has('automation.synthetic'),true);
+  f.card._lang='pl';f.card.render();assert.equal(f.card.shadowRoot.activeElement,row());row().dispatchEvent(new f.dom.window.KeyboardEvent('keydown',{key:' ',bubbles:true,cancelable:true}));assert.equal(f.card.selectedAutoIds.has('automation.synthetic'),false);assert.equal(row().getAttribute('aria-pressed'),'false');assert.equal(f.calls.length,0);
+ }finally{f.card.remove();f.dom.window.close()}
+});
+test('trace keyboard activation loads exactly one real detail and nested comparison keys do not activate the row',async()=>{
+ const f=fixture();try{f.card.traceDetail=null;const trace={id:'synthetic-run',item_id:'synthetic-item',automationName:'Synthetic',timestamp:new f.dom.window.Date('2026-01-01T00:00:00Z'),status:'success',duration:10,trigger:'state',lastStep:'action/0'};f.card.selectedAutomation='automation.synthetic';f.card.traces=[trace];f.card._allFlatTraces=[trace];f.card._hass.callWS=async message=>{f.calls.push(message);return {trace:{},config:{alias:'Synthetic'}}};f.card.render();const row=()=>f.card.shadowRoot.querySelector('.tr-item');row().focus();row().dispatchEvent(new f.dom.window.KeyboardEvent('keydown',{key:' ',bubbles:true,cancelable:true}));await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(f.calls.length,1);assert.equal(f.calls[0].type,'trace/get');assert.equal(f.calls[0].run_id,'synthetic-run');assert.equal(f.card.selectedTrace,'synthetic-run');assert.equal(f.card.shadowRoot.activeElement,row());assert.match(row().getAttribute('aria-label'),/Synthetic/);
+  const compare=row().querySelector('[data-compare-run]');compare.dispatchEvent(new f.dom.window.KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));compare.click();assert.equal(f.calls.length,1);assert.equal(f.card._comparisonRuns.size,1);
+ }finally{f.card.remove();f.dom.window.close()}
+});
+test('group headers expose expanded state and keyboard toggles without API requests',()=>{
+ const f=fixture();try{f.card.viewMode='all-traces';f.card.groupBy='automation';f.card.timeRange='all';f.card._allFlatTraces=[{id:'synthetic-run',item_id:'synthetic-item',automationName:'Synthetic',timestamp:new f.dom.window.Date('2026-01-01T00:00:00Z'),status:'success',duration:10,trigger:'state'}];f.card.render();const header=f.card.shadowRoot.querySelector('.tgroup-h');assert.ok(header);header.focus();header.dispatchEvent(new f.dom.window.KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));assert.equal(header.parentElement.classList.contains('collapsed'),true);assert.equal(header.getAttribute('aria-expanded'),'false');header.dispatchEvent(new f.dom.window.KeyboardEvent('keydown',{key:' ',bubbles:true,cancelable:true}));assert.equal(header.parentElement.classList.contains('collapsed'),false);assert.equal(header.getAttribute('aria-expanded'),'true');assert.equal(f.calls.length,0);
+ }finally{f.card.remove();f.dom.window.close()}
+});
