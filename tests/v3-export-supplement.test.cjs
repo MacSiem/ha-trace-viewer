@@ -4,8 +4,10 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
 const {JSDOM,VirtualConsole}=require('jsdom');
+const installNativeDialog=require('./helpers/native-dialog.cjs');
 function setup(t){
  const dom=new JSDOM('',{runScripts:'outside-only',url:'http://qa.invalid',virtualConsole:new VirtualConsole()});
+ installNativeDialog(dom.window);
  dom.window.ResizeObserver=class{observe(){}disconnect(){}};dom.window.Blob=Blob;
  const downloads=[];dom.window.URL.createObjectURL=b=>{downloads.push(b);return 'blob:fixture';};dom.window.URL.revokeObjectURL=()=>{};dom.window.HTMLAnchorElement.prototype.click=function(){};
  dom.window.eval(fs.readFileSync(path.join(__dirname,'../ha-trace-viewer.js'),'utf8'));

@@ -2,8 +2,10 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const {JSDOM,VirtualConsole}=require('jsdom');
+const installNativeDialog=require('./helpers/native-dialog.cjs');
 function fixture(){
  const dom=new JSDOM('',{runScripts:'outside-only',url:'http://qa.invalid',virtualConsole:new VirtualConsole()});
+ installNativeDialog(dom.window);
  dom.window.ResizeObserver=class{observe(){}disconnect(){}};
  dom.window.Blob=Blob;let download;
  dom.window.URL.createObjectURL=b=>{download=b;return 'blob:qa';};dom.window.URL.revokeObjectURL=()=>{};
@@ -78,11 +80,19 @@ for(const kind of ['filter','selection','locale','source','access','role','ident
  field(f,'save')?.click();await settled();assert.equal(f.download(),undefined);
  }finally{f.close();}
 });
-test('W6 repaint retains dialog node, filename draft, focus and caret; Escape restores opener',async()=>{
- const f=fixture();try{await openExport(f);const host=f.card.shadowRoot.querySelector('[data-ha-tools-export]'),input=field(f,'filename');
- input.value='my-draft.json';input.dispatchEvent(new f.dom.window.Event('input'));input.focus();input.setSelectionRange(3,6);f.card.render();
- assert.equal(f.card.shadowRoot.querySelector('[data-ha-tools-export]'),host);assert.equal(field(f,'filename'),input);assert.equal(input.value,'my-draft.json');assert.equal(input.selectionStart,3);assert.equal(dialog(f).activeElement,input);
- input.dispatchEvent(new f.dom.window.KeyboardEvent('keydown',{key:'Escape',bubbles:true,composed:true}));assert.equal(dialog(f),undefined);assert.equal(f.card.shadowRoot.activeElement.id,'expBtn');
+test('W6 native repaint retains connected modal, frozen bytes, filename and caret; cancel restores current opener',async()=>{
+ const f=fixture();try{await openExport(f);const host=f.card.shadowRoot.querySelector('[data-ha-tools-export]'),input=field(f,'filename'),native=dialog(f).querySelector('dialog');
+ assert(native);assert(native.open);assert(native.matches(':modal'));
+ input.value='my-draft.json';input.dispatchEvent(new f.dom.window.Event('input'));field(f,'refresh').click();await settled();
+ const frozen=field(f,'preview').textContent;assert(frozen.length);input.focus();input.setSelectionRange(3,6);
+ const observer=new f.dom.window.MutationObserver(()=>{});observer.observe(f.card.shadowRoot,{childList:true});const surface=f.card._cardSurface,oldToolbar=surface.querySelector('#expBtn');
+ f.card.render();const removed=observer.takeRecords().some(change=>Array.from(change.removedNodes).some(node=>node===host||node.contains?.(host)));observer.disconnect();
+ assert.equal(removed,false);assert.equal(oldToolbar.isConnected,false);assert.equal(f.card._cardSurface,surface);
+ assert.equal(f.card.shadowRoot.querySelector('[data-ha-tools-export]'),host);assert(host.isConnected);assert.equal(dialog(f).querySelector('dialog'),native);assert(native.matches(':modal'));
+ assert.equal(field(f,'filename'),input);assert.equal(input.value,'my-draft.json');assert.equal(input.selectionStart,3);assert.equal(input.selectionEnd,6);assert.equal(dialog(f).activeElement,input);
+ assert.equal(field(f,'preview').textContent,frozen);assert.equal(f.download(),undefined);
+ native.dispatchEvent(new f.dom.window.Event('cancel',{cancelable:true}));await settled();assert.equal(dialog(f),undefined);assert.equal(native.open,false);assert.equal(f.card.shadowRoot.activeElement.id,'expBtn');
+ await openExport(f);assert(dialog(f).querySelector('dialog').matches(':modal'));assert.equal(field(f,'private').checked,false);assert.equal(f.download(),undefined);
  }finally{f.close();}
 });
 test('W6 disconnect aborts preview and late completion cannot download or reopen',async()=>{
