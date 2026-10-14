@@ -14,8 +14,10 @@ const full = (runId, itemId = 'a', entries = [['action/0', 100]], options = {}) 
 const row = (id, item_id = 'a', ms = 0) => ({ id, item_id, timestamp: new Date(Date.UTC(2026, 0, 1) + ms),
   finishTime: new Date(Date.UTC(2026, 0, 1) + ms + 1000), automationName: `Synthetic ${item_id}`,
   automationEntity: `automation.${item_id}`, status: 'success', duration: 1000, lastStep: 'action/0', trigger: 'fixture', raw: {} });
+const installNativeDialog=require('./helpers/native-dialog.cjs');
 function fixture(t, rows = [row('old'), row('new', 'a', 10000)], callWS = async req => full(req.run_id, req.item_id)) {
   const dom = new JSDOM('<!doctype html>', { runScripts: 'outside-only', url: 'http://qa.invalid/', virtualConsole: new VirtualConsole() });
+  installNativeDialog(dom.window);
   dom.window.ResizeObserver = class { observe() {} disconnect() {} };
   dom.window.HTMLElement.prototype.scrollIntoView = function () {};
   dom.window.eval(fs.readFileSync(path.join(root, 'ha-trace-viewer.js'), 'utf8'));
