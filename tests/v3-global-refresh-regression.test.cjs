@@ -22,7 +22,7 @@ for(const olderError of [false,true])test(`global refresh preserves newer retain
   assert.equal(f.card._fetchError,null,'older failure cannot replace a newer confirmed result');
   assert.equal(f.card._allFlatTraces.find(row=>row.id==='r').status,'success');
   assert.equal(f.card._storedTraces['a::r'].state,'stopped');
-  assert.equal(JSON.parse(f.dom.window.localStorage.getItem('ha-tools-trace-viewer-stored'))['a::r'].state,'stopped');
+  assert.equal(JSON.parse(f.dom.window.localStorage.getItem('ha-tools-trace-viewer-stored')).find(row=>row.item_id==='a'&&row.run_id==='r').state,'stopped');
   assert.ok(f.card.shadowRoot.querySelector('.tr-item.s-success[data-trace="r"]'),'visible row must retain completed status');
  }finally{f.close();}
 });
@@ -43,5 +43,20 @@ for(const name of ['constructor','__proto__','toString'])test(`actual automation
   assert.equal(f.errors.length,0,'native view change must not throw through an inherited object key');
   assert.ok(f.card.shadowRoot.querySelector('.tr-item[data-trace="r"]'));
   assert.match(f.card.shadowRoot.querySelector('.tgroup-h').textContent,new RegExp(name));
+ }finally{f.close();}
+});
+
+for(const olderError of [false,true])test(`later global refresh completes the selected view and cancels older selected request; error=${olderError}`,async()=>{
+ const f=fixture();try{
+  await f.card.updateAutomationData();const selected=deferred(),global=deferred();
+  f.card._hass.callWS=command=>command.item_id?selected.promise:global.promise;
+  f.card.selectedAutomation='automation.alpha';const a=f.card._loadTraces('automation.alpha'),b=f.card.updateAutomationData();
+  global.resolve([f.raw(true)]);await b;
+  if(olderError)selected.reject(new Error('older selected request failed'));else selected.resolve([f.raw(false)]);await a;
+  assert.equal(f.card.traces.find(row=>row.id==='r').status,'success');
+  assert.equal(f.card._traceListError,null);
+  assert.equal(f.card._loadingSelected,false);assert.equal(f.card._loadingTraces,false);
+  assert.equal(f.card._storedTraces['a::r'].state,'stopped');
+  assert.ok(f.card.shadowRoot.querySelector('.tr-item.s-success[data-trace="r"]'));
  }finally{f.close();}
 });
