@@ -1,7 +1,10 @@
 ## 4.1.15 (2026-10-06)
 
+- Keep the newest global or selected-automation refresh in visible and retained history; ignore older successes and failures and clear canceled loading.
+- Render grouping names such as constructor, __proto__ and toString safely.
+
 - Use Polish translations for regional Polish locales, and translate optional support labels while preserving search focus and existing trace history.
-- Offer redacted JSON/CSV exports by default while retaining an explicit raw option. Omit identifying data, variables, service arguments and configuration from sharing exports.
+- Offer reviewed JSON/CSV exports with private fields off by default; optional reviewed names, run IDs and dates never include raw configuration, variables, tokens or service arguments.
 - Quote CSV fields correctly and neutralize formula-like values; retain stored details when the server has expired a run.
 - Cancel pending trace and export requests when the user or administrator role changes, and prevent older detail responses replacing the latest selection.
 - Clear canceled list/detail loading when changing views or reconnecting, while retaining completed details.

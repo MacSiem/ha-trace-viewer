@@ -2187,14 +2187,19 @@ class HATraceViewer extends HTMLElement {
       this._storedDetails = this._loadStoredDetails();
       this._adminStorageLoaded = true;
     }
+    // Global and selected refreshes share one source ordering boundary.
+    const listToken = {};
+    this._listRequestToken = listToken;
+    this._traceLoadToken = null;
+    this._loadingSelected = false; this._traceListError = null;
     let liveTraces = [];
     this._loadingTraces = true; this.render();
     try {
       liveTraces = await this._hass.callWS({ type: 'trace/list', domain: 'automation' });
-      if (!this._isAdminSession(access)) return;
+      if (!this._isAdminSession(access) || this._listRequestToken !== listToken) return;
       this._fetchError = null;
     } catch (e) {
-      if (!this._isAdminSession(access)) return;
+      if (!this._isAdminSession(access) || this._listRequestToken !== listToken) return;
       this._fetchError = this._lang === 'pl' ? 'Nie można wczytać śladów.' : 'Could not load traces.';
       console.warn('[Trace Viewer] Could not fetch traces:', e);
     }
@@ -2238,6 +2243,12 @@ class HATraceViewer extends HTMLElement {
     }
     this._allFlatTraces.sort((a, b) => this._traceTimeOrder(a, b));
 
+    if (this.selectedAutomation) {
+      const auto = this._rawAutomations.find(a => a.entity === this.selectedAutomation);
+      const bucket = this._traceMap[this._traceKey(auto?.automationId)];
+      if (bucket) this._applyTraceBucket(bucket, auto, auto.entity, auto.automationId);
+      else this.traces = [];
+    }
     this.applyFiltersAndSort();
     this.render();
     this._startTimer();
@@ -2342,7 +2353,7 @@ class HATraceViewer extends HTMLElement {
   }
 
   _groupTraces(traces) {
-    const g = {};
+    const g = Object.create(null);
     for (const t of traces) {
       const key = this.groupBy === 'result' ? t.status : this.groupBy === 'trigger' ? t.trigger : t.automationName;
       if (!g[key]) g[key] = { name: key, traces: [], count: 0 };
@@ -2443,6 +2454,8 @@ class HATraceViewer extends HTMLElement {
     this._detailLoadToken = null; this._traceListError = null; this._loadingSelected = true;
     const loadToken = {};
     this._traceLoadToken = loadToken;
+    this._listRequestToken = loadToken;
+    this._loadingTraces = false; this._fetchError = null;
     this.traces = [];
     this.selectedTrace = null;
     this.traceDetail = null;
@@ -2461,7 +2474,7 @@ class HATraceViewer extends HTMLElement {
 
     try {
       const liveTraces = await this._hass.callWS({ type: 'trace/list', domain: 'automation', item_id: aid });
-      if (!this._isAdminSession(access) || this._traceLoadToken !== loadToken || this.selectedAutomation !== entity) return;
+      if (!this._isAdminSession(access) || this._traceLoadToken !== loadToken || this._listRequestToken !== loadToken || this.selectedAutomation !== entity) return;
       const bucket = this._cacheItemTraces(aid, Array.isArray(liveTraces) ? liveTraces : []);
       if (bucket) {
         auto.triggerCount = bucket.count;
@@ -2473,7 +2486,7 @@ class HATraceViewer extends HTMLElement {
         this._applyTraceBucket(bucket, auto, entity, aid);
       }
     } catch (e) {
-      if (!this._isAdminSession(access) || this._traceLoadToken !== loadToken || this.selectedAutomation !== entity) return;
+      if (!this._isAdminSession(access) || this._traceLoadToken !== loadToken || this._listRequestToken !== loadToken || this.selectedAutomation !== entity) return;
       this._traceListError = this._lang === 'pl' ? 'Nie można wczytać śladów tej automatyzacji.' : 'Could not load automation traces.';
     }
     this._loadingSelected = false; this.render();

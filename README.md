@@ -74,25 +74,26 @@ That's it — no options are required.
 - **By Automation / All Traces views** with time-range, status and text filters.
 - **Trace detail** — timeline of triggers / conditions / actions, raw JSON,
   config and related entities.
-- **Multi-select + export** — export chosen traces as JSON or CSV (full detail
-  is fetched via `trace/get`).
+- **Multi-select + export** — review selected traces or automations as JSON or CSV,
+  with explicit source limits and a preview of the exact file.
 - **Local saving** — keep important traces in browser storage beyond HA's
   5-trace limit and across restarts.
 
 ## Exporting and sharing
 
 Select traces or automations, open **Export**, then choose JSON or CSV.
-**Redact identifying data** is enabled by default. Redacted files contain
-pseudonyms, the outcome and duration; JSON also reports whether details exist
-and their step count. They omit names, entity/run identifiers, absolute times,
-action paths, variables, service arguments and raw configuration. Review the
-file before sharing it.
+Private fields are off by default. Files contain anonymous run/automation aliases,
+confirmed outcomes, durations and a bounded summary of details already loaded in
+this card. Export does not fetch `trace/get`; missing details remain explicit.
+The report distinguishes partial results and describes its source limits.
 
-Uncheck redaction for a raw export. Raw JSON preserves full available details,
-including locally retained details of expired runs; it may contain secrets and
-household activity. Raw CSV contains run summaries. CSV quotes separators,
-quotes and line breaks, and prefixes formula-like text with an apostrophe.
-Keep raw files private.
+**Include reviewed private fields** adds reviewed automation names, run IDs and
+confirmed timestamps for this export only. Tokens, users, addresses, variables,
+service arguments, raw configuration, error messages, entity identifiers and
+source paths remain excluded in both modes. Review the exact preview before
+saving. CSV quotes separators, quotes and line breaks and neutralizes formula-like
+text. Browser-retained raw details remain available in the administrator detail
+view; they are not copied into the reviewed export.
 
 ## FAQ
 
@@ -129,7 +130,7 @@ MIT, see [LICENSE](LICENSE).
 
 ## Privacy and data
 
-Automation traces can include entity identifiers, service arguments and household activity. Saved browser data belongs to the current Home Assistant origin and is not a shared backup. Review redacted exports before sharing; keep raw traces private.
+Automation traces can include entity identifiers, service arguments and household activity. Saved browser data belongs to the current Home Assistant origin and is not a shared backup. Review exported files before sharing; keep raw traces private.
 
 See [SECURITY.md](SECURITY.md) for safe vulnerability reporting and [NOTICE](NOTICE) for licensing notices.
 
