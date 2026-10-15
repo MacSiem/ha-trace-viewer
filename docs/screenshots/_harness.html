@@ -1,99 +1,38 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
 <meta charset="utf-8">
-<title>TV screenshot harness</title>
+<title>Trace Viewer — synthetic screenshot fixture</title>
 <style>
-  html, body { margin: 0; padding: 24px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-  body.light { background: #f4f5f7; }
-  body.light ha-trace-viewer { --card-background-color: #ffffff; --primary-background-color: #f4f5f7; }
-  body.dark { background: #111318; }
-  body.dark ha-trace-viewer { --card-background-color: #1c1e26; --primary-background-color: #111318; }
-  ha-trace-viewer { display: block; width: 480px; }
+html,body{margin:0;padding:0;font-family:system-ui,sans-serif}body{padding:24px;background:#f4f5f7;color:#17212f}body.dark{background:#111318;color:#e5e7eb}.fixture-note{margin:0 0 16px;font-size:14px;max-width:900px}ha-trace-viewer{display:block;width:900px;max-width:100%;--card-background-color:#fff;--primary-background-color:#f4f5f7}body.dark ha-trace-viewer{--card-background-color:#1c1e26;--primary-background-color:#111318}
 </style>
-</head>
-<body>
+<p class="fixture-note">Synthetic demonstration data for screenshots. Use the card controls to inspect and compare runs. No Home Assistant connection or device actions.</p>
 <ha-trace-viewer id="card"></ha-trace-viewer>
-<script>
-  try { localStorage.setItem('ha-intro-dismissed-ha-trace-viewer', '1'); } catch (e) {}
-</script>
 <script src="../../ha-trace-viewer.js"></script>
 <script>
-(function () {
-  const params = new URLSearchParams(location.search);
-  const theme = params.get('theme') === 'dark' ? 'dark' : 'light';
-  document.body.className = theme;
-  const now = Date.now(); const h = 3600000;
-
-  const mk = (id, name, state, last) => ({
-    entity_id: 'automation.' + id, state,
-    attributes: { friendly_name: name, last_triggered: last ? new Date(now - last).toISOString() : null, mode: 'single', id: id },
-    last_changed: new Date(now - 2 * h).toISOString(), last_updated: new Date(now - 2 * h).toISOString(),
-  });
-  const autos = [
-    mk('morning_lights', 'Morning lights on sunrise', 'on', 3 * h),
-    mk('night_thermostat', 'Night thermostat setback', 'on', 9 * h),
-    mk('door_notify', 'Front door open notification', 'on', 0.4 * h),
-    mk('vacation_presence', 'Vacation presence simulation', 'off', null),
-    mk('water_leak_alert', 'Water leak alert', 'on', 26 * h),
-    mk('garage_autoclose', 'Garage auto-close at night', 'on', 14 * h),
-    mk('media_movie_scene', 'Movie scene on media play', 'on', 50 * h),
+(() => {
+  const params=new URLSearchParams(location.search),language=params.get('lang')==='pl'?'pl':'en',dark=params.get('theme')==='dark';
+  document.documentElement.lang=language;document.body.classList.toggle('dark',dark);
+  const stamp=ms=>new Date(Date.parse('2026-10-14T06:00:00Z')+ms).toISOString();
+  const definitions=[
+    {item:'demo_morning',name:'Morning lights',run:'demo-morning-before',start:0,duration:120,actionOffset:20},
+    {item:'demo_morning',name:'Morning lights',run:'demo-morning-after',start:600000,duration:360,actionOffset:260},
+    {item:'demo_door',name:'Door notification',run:'demo-door-error',start:1200000,duration:45,actionOffset:20,error:true},
+    {item:'demo_heating',name:'Evening heating',run:'demo-heating-success',start:1800000,duration:180,actionOffset:70}
   ];
-  const states = {};
-  autos.forEach(a => { states[a.entity_id] = a; });
-
-  const mkRuns = (aid, n, errIdx) => {
-    const runs = [];
-    for (let i = 0; i < n; i++) {
-      const start = now - (i + 1) * 2.3 * h;
-      const dur = [45, 180, 920, 60, 1400][i % 5];
-      runs.push({
-        run_id: aid + '-' + i, item_id: aid, state: 'stopped',
-        script_execution: i === errIdx ? 'error' : 'finished',
-        error: i === errIdx ? 'Template error' : undefined,
-        timestamp: { start: new Date(start).toISOString(), finish: new Date(start + dur).toISOString() },
-        last_step: 'action/0', trigger: 'state of binary_sensor.front_door',
-      });
-    }
-    return runs;
-  };
-
-  const hass = {
-    language: 'en',
-    themes: { darkMode: theme === 'dark' },
-    states,
-    services: {},
-    connection: { subscribeEvents: () => Promise.resolve(() => {}) },
-    callWS: async (msg) => {
-      const t = String(msg && msg.type || '');
-      if (t === 'trace/list') {
-        const aid = msg.item_id;
-        const counts = { morning_lights: 4, night_thermostat: 3, door_notify: 5, vacation_presence: 0, water_leak_alert: 2, garage_autoclose: 3, media_movie_scene: 1 };
-        if (aid) return mkRuns(aid, counts[aid] || 0, aid === 'door_notify' ? 1 : -1);
-        let all = [];
-        Object.entries(counts).forEach(([a, n]) => { all = all.concat(mkRuns(a, n, a === 'door_notify' ? 1 : -1)); });
-        return all;
-      }
-      if (t === 'trace/get') {
-        return { run_id: msg.run_id, item_id: msg.item_id, state: 'stopped', script_execution: 'finished',
-          timestamp: { start: new Date(now - 2 * h).toISOString(), finish: new Date(now - 2 * h + 300).toISOString() },
-          trace: {}, config: { trigger: [{ platform: 'state' }], action: [{ service: 'light.turn_on' }] }, context: {} };
-      }
-      return {};
-    },
-    callApi: async () => ({}),
-    callService: async () => ({}),
-  };
-
-  const card = document.getElementById('card');
-  card.setConfig({ type: 'custom:ha-trace-viewer' });
-  card.hass = hass;
-  setTimeout(() => { card.hass = { ...hass }; }, 400);
-  setTimeout(() => { card.onAutoClick('automation.door_notify'); }, 650);
-  const scrub = () => { try { card.shadowRoot && card.shadowRoot.querySelectorAll('#tip-banner, [class*="banner"], .donate-section').forEach(n => n.remove()); } catch (e) {} };
-  setInterval(scrub, 150);
-  setTimeout(() => { scrub(); document.title = 'TV-READY'; }, 1300);
+  const payload=row=>({domain:'automation',item_id:row.item,run_id:row.run,state:'stopped',script_execution:row.error?'error':'finished',timestamp:{start:stamp(row.start),finish:stamp(row.start+row.duration)},last_step:'action/1',trigger:'Synthetic scheduled event',...(row.error?{error:'Synthetic fixture error'}:{}),trace:{
+    trigger:[{path:'trigger',timestamp:stamp(row.start),changed_variables:{demo:true}}],
+    'action/0':[{path:'action/0',timestamp:stamp(row.start+10),result:{delay:row.actionOffset/1000,done:true}}],
+    'action/1':[{path:'action/1',timestamp:stamp(row.start+row.actionOffset),result:{params:{domain:'light',service:'turn_on',service_data:{},target:{entity_id:'light.demo_kitchen'}}}}]
+  },config:{alias:row.name,triggers:[{trigger:'time',at:'08:00:00'}],actions:[{delay:{milliseconds:row.actionOffset}},{action:'light.turn_on',target:{entity_id:'light.demo_kitchen'}}]}});
+  const states={};
+  for(const row of definitions){const id='automation.'+row.item;states[id]={entity_id:id,state:'on',attributes:{id:row.item,friendly_name:row.name,last_triggered:stamp(row.start),mode:'single'},last_changed:stamp(0),last_updated:stamp(0)};}
+  states['automation.demo_vacation']={entity_id:'automation.demo_vacation',state:'off',attributes:{id:'demo_vacation',friendly_name:'Vacation presence',last_triggered:null,mode:'single'},last_changed:stamp(0),last_updated:stamp(0)};
+  const hass={language,user:{id:'synthetic-screenshot-admin',is_admin:true},themes:{darkMode:dark},states,connection:{connected:true,addEventListener(){},removeEventListener(){}},callWS:async message=>{
+    if(message.type==='trace/list')return definitions.filter(row=>!message.item_id||row.item===message.item_id).map(row=>{const value=payload(row);delete value.trace;delete value.config;return value;});
+    if(message.type==='trace/get'){const row=definitions.find(row=>row.item===message.item_id&&row.run===message.run_id);if(!row)throw Error('Synthetic trace unavailable');return payload(row);}
+    throw Error('No network actions in screenshot fixture');
+  }};
+  const card=document.getElementById('card');card.setConfig({type:'custom:ha-trace-viewer',title:'Trace Viewer',show_support:false});card.hass=hass;
 })();
 </script>
-</body>
 </html>
