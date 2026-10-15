@@ -1,10 +1,16 @@
+## 4.2.0 (2026-10-15)
+
+- Compare two chosen executions using the shared Analyzer trace contract. Show the first confirmed difference in recorded execution points, outcomes and timing; keep unavailable details explicit.
+- Page long comparison results and retain keyboard focus, local history and selected runs across ordinary data updates.
+- Review JSON/CSV exports with filename and format controls before saving. Private fields start off; reviewed names, run IDs and timestamps never include raw configuration, variables, tokens or service arguments.
+- Use the same latest-request order for global and selected-automation refreshes, ignore older successes/failures, and clear canceled loading.
+- Render grouping names such as constructor, __proto__ and toString safely.
+- Keep actions and navigation accessible in narrow cards, with Polish and English result labels and explicit incomplete data.
+
 ## 4.1.15 (2026-10-06)
 
-- Keep the newest global or selected-automation refresh in visible and retained history; ignore older successes and failures and clear canceled loading.
-- Render grouping names such as constructor, __proto__ and toString safely.
-
 - Use Polish translations for regional Polish locales, and translate optional support labels while preserving search focus and existing trace history.
-- Offer reviewed JSON/CSV exports with private fields off by default; optional reviewed names, run IDs and dates never include raw configuration, variables, tokens or service arguments.
+- Offer redacted JSON/CSV exports by default while retaining an explicit raw option. Omit identifying data, variables, service arguments and configuration from sharing exports.
 - Quote CSV fields correctly and neutralize formula-like values; retain stored details when the server has expired a run.
 - Cancel pending trace and export requests when the user or administrator role changes, and prevent older detail responses replacing the latest selection.
 - Clear canceled list/detail loading when changing views or reconnecting, while retaining completed details.
