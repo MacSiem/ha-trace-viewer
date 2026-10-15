@@ -7,7 +7,7 @@
 - Render grouping names such as constructor, __proto__ and toString safely.
 - Keep actions and navigation accessible in narrow cards, with Polish and English result labels and explicit incomplete data.
 - Preserve title focus and text selection when the dashboard echoes editor configuration; follow the HA language while retaining explicit card language overrides. Translate saved-history and never-triggered labels in Polish.
-- Use the primary card text color for readable flow-diagram durations in both light and dark mode.
+- Use the primary card text color for readable flow-diagram labels and durations in both themes; keep status colors on node outlines and icons.
 
 ## 4.1.15 (2026-10-06)
 

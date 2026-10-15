@@ -2740,15 +2740,16 @@ class HATraceViewer extends HTMLElement {
       }
 
       // Node colors (Bento tokens with hex fallbacks)
-      let fill, stroke, textFill;
-      if (step.category === 'trigger') { fill = 'rgba(59,130,246,0.12)'; stroke = 'var(--bento-primary, #3B82F6)'; textFill = 'var(--bento-primary, #3B82F6)'; }
+      let fill, stroke;
+      const textFill = 'var(--bento-text, currentColor)';
+      if (step.category === 'trigger') { fill = 'rgba(59,130,246,0.12)'; stroke = 'var(--bento-primary, #3B82F6)'; }
       else if (step.category === 'condition') {
-        if (step.status === 'skipped') { fill = 'rgba(100,116,139,0.08)'; stroke = 'var(--bento-text-secondary, #94A3B8)'; textFill = 'var(--bento-text-secondary, #94A3B8)'; }
-        else { fill = 'rgba(245,158,11,0.12)'; stroke = 'var(--bento-warning, #F59E0B)'; textFill = 'var(--tc, #B45309)'; }
+        if (step.status === 'skipped') { fill = 'rgba(100,116,139,0.08)'; stroke = 'var(--bento-text-secondary, #94A3B8)'; }
+        else { fill = 'rgba(245,158,11,0.12)'; stroke = 'var(--bento-warning, #F59E0B)'; }
       }
-      else if (step.category === 'result') { fill = step.status === 'success' ? 'rgba(16,185,129,0.12)' : step.status === 'error' ? 'rgba(239,68,68,0.12)' : 'rgba(173,82,0,0.10)'; stroke = this._traceResultColor(step.status); textFill = stroke; }
-      else if (step.status === 'error') { fill = 'rgba(239,68,68,0.12)'; stroke = 'var(--bento-error, #EF4444)'; textFill = 'var(--bento-error, #EF4444)'; }
-      else { fill = 'rgba(16,185,129,0.1)'; stroke = 'var(--bento-success, #10B981)'; textFill = 'var(--tc, #1E293B)'; }
+      else if (step.category === 'result') { fill = step.status === 'success' ? 'rgba(16,185,129,0.12)' : step.status === 'error' ? 'rgba(239,68,68,0.12)' : 'rgba(173,82,0,0.10)'; stroke = this._traceResultColor(step.status); }
+      else if (step.status === 'error') { fill = 'rgba(239,68,68,0.12)'; stroke = 'var(--bento-error, #EF4444)'; }
+      else { fill = 'rgba(16,185,129,0.1)'; stroke = 'var(--bento-success, #10B981)'; }
 
       // Rounded rect node
       svg += `<rect x="${cx - nodeW / 2}" y="${y}" width="${nodeW}" height="${nodeH}" rx="18" fill="${fill}" stroke="${stroke}" stroke-width="1.5"/>`;
