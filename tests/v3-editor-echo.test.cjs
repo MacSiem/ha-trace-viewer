@@ -25,10 +25,11 @@ test('Lovelace config echo retains title focus and backward caret without mutati
 });
 test('editor follows HA language and keeps the same draft and selection across language updates',t=>{
  const dom=fixture(t),editor=dom.window.document.createElement('ha-trace-viewer-editor');
- editor.setConfig({title:'Draft',language:'en',unknown:{keep:true}});editor.hass={language:'pl-PL'};dom.window.document.body.append(editor);
+ editor.setConfig({title:'Draft',unknown:{keep:true}});editor.hass={language:'pl-PL'};dom.window.document.body.append(editor);
  let input=editor.shadowRoot.getElementById('cf_title');assert.equal(input.labels[0].textContent,'Tytuł');
  input.focus();input.setSelectionRange(1,4,'backward');let changes=0;editor.addEventListener('config-changed',()=>changes++);
  editor.hass={language:'en'};input=editor.shadowRoot.getElementById('cf_title');assert.equal(input.labels[0].textContent,'Title');assert.equal(input.value,'Draft');assert.equal(editor.shadowRoot.activeElement,input);assert.deepEqual([input.selectionStart,input.selectionEnd,input.selectionDirection],[1,4,'backward']);assert.equal(changes,0);
+ editor.setConfig({title:'Draft',language:'en'});editor.hass={language:'pl'};assert.equal(editor.shadowRoot.getElementById('cf_title').labels[0].textContent,'Title','an explicit existing card language remains an override');
 });
 async function populated(t){
  const dom=fixture(t),card=dom.window.document.createElement('ha-trace-viewer');card.setConfig({show_support:false});dom.window.document.body.append(card);
