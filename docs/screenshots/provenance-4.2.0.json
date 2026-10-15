@@ -1,0 +1,75 @@
+{
+  "version": "4.2.0",
+  "source_commit": "04ea4bbde68605fce1469acb06d6b278d8abe2fb",
+  "source_sha256": "57f01c32bbd27e5db69cee55f76605b818442ded68ea5b06dba9131181721fea",
+  "fixture": "docs/screenshots/_harness.html",
+  "fixture_commit": "04ea4bbde68605fce1469acb06d6b278d8abe2fb",
+  "synthetic": true,
+  "browser": "Codex in-app Browser",
+  "method": "Full-page JPEG at viewport1280; crop pixels only using read-only DOM document bounds, then PNG conversion; no rendered UI changes",
+  "files": [
+    {
+      "file": "card-traces-light-4.2.0.png",
+      "sha256": "6b34cc7378109ed873788f57904ab2a19eaa77fdef17489095b4c6f245f61c26",
+      "bytes": 338902,
+      "pixel_crop": {
+        "x": 24,
+        "y": 57,
+        "width": 1200,
+        "height": 942
+      },
+      "raw_capture": "trace187-light-full.jpg",
+      "DOM_document_rect": {
+        "height": 942,
+        "viewportWidth": 1280,
+        "width": 1200,
+        "x": 24,
+        "y": 57
+      },
+      "theme": "light",
+      "scene": "light"
+    },
+    {
+      "file": "card-traces-dark-4.2.0.png",
+      "sha256": "b82d694a43a5f8d0d3c4b942479a44bf11378b3ae59b750f41123f6808d7d3d3",
+      "bytes": 323436,
+      "pixel_crop": {
+        "x": 24,
+        "y": 57,
+        "width": 1200,
+        "height": 942
+      },
+      "raw_capture": "trace187-dark-full.jpg",
+      "DOM_document_rect": {
+        "height": 942,
+        "viewportWidth": 1280,
+        "width": 1200,
+        "x": 24,
+        "y": 57
+      },
+      "theme": "dark",
+      "scene": "dark"
+    },
+    {
+      "file": "card-comparison-4.2.0.png",
+      "sha256": "de65222aed5ed319dd9753702633edd6fe640b88064989a05cc48c5e61549f4e",
+      "bytes": 233441,
+      "pixel_crop": {
+        "x": 25,
+        "y": 1010,
+        "width": 1198,
+        "height": 446
+      },
+      "raw_capture": "trace187-comparison-full.jpg",
+      "DOM_document_rect": {
+        "height": 446,
+        "viewportWidth": 1280,
+        "width": 1198,
+        "x": 25,
+        "y": 1010
+      },
+      "theme": "light",
+      "scene": "comparison"
+    }
+  ]
+}

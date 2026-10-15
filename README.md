@@ -48,11 +48,16 @@ automations need an `id` for traces. See the
 
 | Light | Dark |
 |---|---|
-| ![Traces, light theme](docs/screenshots/card-traces-light-4.1.15.jpg) | ![Traces, dark theme](docs/screenshots/card-traces-dark-4.1.15.jpg) |
+| ![Traces, light theme](docs/screenshots/card-traces-light-4.2.0.png) | ![Traces, dark theme](docs/screenshots/card-traces-dark-4.2.0.png) |
 
-*Synthetic staging in a narrow Sections card: run stats (total, success rate, average
-duration, errors) and the All Traces list. No household trace is shown. Dark mode
-follows your Home Assistant theme.*
+*Version 4.2.0 with synthetic demonstration data in a wide card: automation selection,
+run statistics, timeline and preserved detail tabs. Dark mode follows your Home
+Assistant theme. No household trace is shown.*
+
+![Comparison of two selected runs](docs/screenshots/card-comparison-4.2.0.png)
+
+*The older baseline and newer run show the first recorded timing difference, the
+comparison threshold and its limits. Variable values and configuration are not compared.*
 
 ## Installation
 
