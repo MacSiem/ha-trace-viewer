@@ -3070,7 +3070,7 @@ class HATraceViewer extends HTMLElement {
           <span class="auto-name" style="display:block">${_esc(this._sanitize(a.name))}</span>
           <span class="auto-meta">
             <span class="auto-dot s-${a.status}"></span>
-            <span data-ts="${a.lastTriggered?.toISOString() || ''}">${a.lastTriggered ? this._relTime(a.lastTriggered) : 'Never'}</span>
+            <span data-ts="${a.lastTriggered?.toISOString() || ''}">${a.lastTriggered ? this._relTime(a.lastTriggered) : (this._lang === 'pl' ? 'Nigdy' : 'Never')}</span>
             <span class="auto-count">${a.triggerCount}</span>
           </span>
         </button>
@@ -3487,7 +3487,7 @@ class HATraceViewer extends HTMLElement {
         <div class="topbar">
           <span class="title">${_esc(this.config.title || this._t('traceViewer'))}</span>
           <div class="topbar-r">
-            <span class="trace-saved-badge" id="traceStorageInfo" title="${this._lang === 'pl' ? 'Zapisane trace\u2019y' : 'Saved traces'}" style="font-size:11px;color:var(--bento-text-secondary);padding:4px 8px;background:var(--bento-bg);border-radius:var(--radius-xs);border:1px solid var(--bento-border);display:inline-flex;align-items:center;gap:4px">\u{1F4BE} ${this._getStoredTraceCount()} saved</span><button type="button" class="trace-settings-btn" id="goToSettingsBtn" title="${this._lang === 'pl' ? 'Ustawienia Trace Viewer' : 'Trace Viewer Settings'}" style="font-size:11px;color:var(--bento-text-secondary);padding:4px 8px;background:var(--bento-bg);border-radius:var(--radius-xs);border:1px solid var(--bento-border);cursor:pointer;display:inline-flex;align-items:center;gap:4px;margin-left:6px">\u2699\uFE0F ${this._lang === 'pl' ? 'Ustawienia' : 'Settings'}</button>
+            <span class="trace-saved-badge" id="traceStorageInfo" title="${this._lang === 'pl' ? 'Zapisane ślady' : 'Saved traces'}" style="font-size:11px;color:var(--bento-text-secondary);padding:4px 8px;background:var(--bento-bg);border-radius:var(--radius-xs);border:1px solid var(--bento-border);display:inline-flex;align-items:center;gap:4px">\u{1F4BE} ${this._lang === 'pl' ? 'Zapisane: ' + this._getStoredTraceCount() : this._getStoredTraceCount() + ' saved'}</span><button type="button" class="trace-settings-btn" id="goToSettingsBtn" title="${this._lang === 'pl' ? 'Ustawienia Trace Viewer' : 'Trace Viewer Settings'}" style="font-size:11px;color:var(--bento-text-secondary);padding:4px 8px;background:var(--bento-bg);border-radius:var(--radius-xs);border:1px solid var(--bento-border);cursor:pointer;display:inline-flex;align-items:center;gap:4px;margin-left:6px">\u2699\uFE0F ${this._lang === 'pl' ? 'Ustawienia' : 'Settings'}</button>
             <div class="dd" id="expDD">
               <button class="btn-s" id="expBtn" ${!this._exportRows('all').length && this.selectedAutoIds.size === 0 ? 'disabled' : ''}>${this._t('export')} \u25BE</button>
               <div class="dd-menu">
@@ -4418,22 +4418,42 @@ class HaTraceViewerEditor extends HTMLElement {
     this._config = { ...config };
     this._render();
   }
+  set hass(hass) {
+    this._hass = hass;
+    this._updateTitleLabel();
+  }
+  _titleLabel() {
+    const language = typeof this._config?.language === 'string' ? this._config.language : this._hass?.language || navigator.language || 'en';
+    return language.startsWith('pl') ? 'Tytuł' : 'Title';
+  }
+  _updateTitleLabel() {
+    const label = this.shadowRoot.querySelector('label[for="cf_title"]');
+    if (label) label.textContent = this._titleLabel();
+  }
   _dispatch() {
     this.dispatchEvent(new CustomEvent('config-changed', { detail: { config: this._config }, bubbles: true, composed: true }));
   }
   _render() {
+    const title = this.shadowRoot.querySelector('#cf_title');
+    const value = String(this._config.title ?? 'Trace Viewer');
+    if (title) {
+      // Reuse the Config Auditor editor fix: equal HA echoes must not reset selection.
+      if (title.value !== value) title.value = value;
+      this._updateTitleLabel();
+      return;
+    }
     this.shadowRoot.innerHTML = `
       <style>
-            :host { display:block; padding:16px; }
-            h3 { margin:0 0 16px; font-size:15px; font-weight:600; color:var(--bento-text, var(--primary-text-color,#1e293b)); }
-            input { box-sizing:border-box;min-height:44px;min-width:44px;max-width:100%;transition:border-color .2s; }
+        :host { display:block; padding:16px; }
+        h3 { margin:0 0 16px; font-size:15px; font-weight:600; color:var(--bento-text, var(--primary-text-color,#1e293b)); }
+        input { box-sizing:border-box;min-height:44px;min-width:44px;max-width:100%;transition:border-color .2s; }
             input:focus-visible { outline:3px solid var(--primary-color,#1769aa);outline-offset:2px; }
-            input:focus { border-color:var(--bento-primary, var(--primary-color,#3b82f6)); }
-        </style>
+        input:focus { border-color:var(--bento-primary, var(--primary-color,#3b82f6)); }
+      </style>
       <h3>Trace Viewer</h3>
             <div style="margin-bottom:12px;">
-              <label for="cf_title" style="display:block;font-weight:500;margin-bottom:4px;font-size:13px;">${(typeof this._config?.language === 'string' ? this._config.language : navigator.language || 'en').startsWith('pl') ? 'Tytuł' : 'Title'}</label>
-              <input type="text" id="cf_title" value="${_esc(this._config?.title || 'Trace Viewer')}"
+              <label for="cf_title" style="display:block;font-weight:500;margin-bottom:4px;font-size:13px;">${this._titleLabel()}</label>
+              <input type="text" id="cf_title" value="${_esc(value)}"
                 style="width:100%;padding:8px 12px;border:1px solid var(--divider-color,#e2e8f0);border-radius:8px;background:var(--card-background-color,#fff);color:var(--primary-text-color,#1e293b);font-size:14px;box-sizing:border-box;">
             </div>
     `;
