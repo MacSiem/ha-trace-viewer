@@ -7,6 +7,7 @@
 - Render grouping names such as constructor, __proto__ and toString safely.
 - Keep actions and navigation accessible in narrow cards, with Polish and English result labels and explicit incomplete data.
 - Preserve title focus and text selection when the dashboard echoes editor configuration; follow the HA language while retaining explicit card language overrides. Translate saved-history and never-triggered labels in Polish.
+- Use the card theme for flow-diagram duration text, including standalone dark mode.
 
 ## 4.1.15 (2026-10-06)
 
