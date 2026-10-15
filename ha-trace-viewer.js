@@ -2765,7 +2765,7 @@ class HATraceViewer extends HTMLElement {
 
       // Duration on the right
       if (step.duration > 0) {
-        svg += `<text x="${cx + nodeW / 2 - 8}" y="${nodeCY + 1}" text-anchor="end" dominant-baseline="central" font-size="9" fill="var(--bento-text-secondary, currentColor)">${this._fmtDur(step.duration)}</text>`;
+        svg += `<text x="${cx + nodeW / 2 - 8}" y="${nodeCY + 1}" text-anchor="end" dominant-baseline="central" font-size="9" fill="var(--bento-text, currentColor)">${this._fmtDur(step.duration)}</text>`;
       }
     });
 
