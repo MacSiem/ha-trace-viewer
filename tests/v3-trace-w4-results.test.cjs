@@ -228,7 +228,8 @@ test('live locale change translates the open detail without refetching or changi
   assert.match(result.textContent, /Niepotwierdzony.*Zakończono o/);
   assert.doesNotMatch(result.textContent, /Unconfirmed|Finished at/);
   // Native Chrome with an English browser also exposed English month/AM-PM in PL.
-  assert.match(result.textContent, /stycznia/);
+  // v4 intentionally uses the shared friendly short month, still in the HA language.
+  assert.match(result.textContent, /1 sty 2026/);
   assert.doesNotMatch(result.textContent, /January|AM|PM/);
   assert.doesNotMatch(card._fmtTimeShort(row.timestamp), /AM|PM/);
   assert.equal(card.selectedTrace, row.id);
