@@ -4625,7 +4625,8 @@ ${_FAMILY_CONTROL_CSS}
     _bindFamilyNavigation(this);
   }
   disconnectedCallback() {
-    const move = !this.isConnected && !this._comparisonPending && this._comparisonRuns.size
+    // Disconnected reactions can run after insertion, when isConnected is true again.
+    const move = !this._comparisonPending && this._comparisonRuns.size
       && this._hass?.user?.is_admin ? {
         runs:new Map(this._comparisonRuns), view:this._comparisonView, page:this._comparisonPage,
         connection:this._hass.connection, userId:this._hass.user.id,
