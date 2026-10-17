@@ -115,3 +115,74 @@ test('limits remain in closed disclosure while partial and coverage stay visible
  assert.match(root.querySelector('[data-comparison-coverage]').textContent,/2.*2/);
  assert.match(root.querySelector('[data-comparison-lane="0"] time').textContent,/2026/);
 });
+
+for (const missing of ['unavailable','empty']) test(`partial ${missing} preserves pagination to last available point`,async t=>{
+ const entries=Array.from({length:60},(_,i)=>['action/'+i,i*10]);
+ const f=fixture(t,undefined,req=>{
+  if(req.run_id==='new') {if(missing==='unavailable')throw {code:'not_found'};return full('new',[]);}
+  return full('old',entries);
+ });await compare(f);
+ const root=f.card.shadowRoot;
+ assert.match(root.querySelector('#comparisonPageStatus').textContent,/1 \/ 2/);
+ const next=root.querySelector('#comparisonNext');assert.ok(next);assert.equal(next.disabled,false);next.click();
+ assert.equal(root.querySelector('[data-comparison-lane="0"] [data-path="action/59"]').dataset.offsetMs,'590');
+ assert.equal(root.querySelectorAll('[data-comparison-lane="0"] [data-offset-ms]').length,10);
+ assert.equal(root.querySelector('#exportComparison'),null);assert.equal(f.requests.length,2);
+});
+
+for(const language of ['en','pl']) test(`${language} point status labels preserve Analyzer pass/error/changed/skipped meanings`,async t=>{
+ const f=fixture(t,undefined,req=>{
+  const raw=full(req.run_id,[['pass/0',0],['error/0',10],['changed/0',20],['skipped/0',30]]);
+  raw.trace['error/0'][0].error='Synthetic error';
+  raw.trace['changed/0'][0].changed_variables={synthetic:'PRIVATE_VALUE_NOT_FOR_COMPARISON'};
+  raw.trace['skipped/0'][0].result=false;return raw;
+ });f.card._lang=language;await compare(f);
+ const lane=f.card.shadowRoot.querySelector('[data-comparison-lane="0"]');
+ const labels=language==='pl'?['Zapisany punkt','Błąd punktu','Zmiana zmiennych','Pominięty']:['Recorded point','Point error','Variables changed','Skipped'];
+ ['pass','error','changed','skipped'].forEach((key,i)=>assert.ok(lane.querySelector(`[data-path="${key}/0"]`).textContent.includes(labels[i])));
+ assert.doesNotMatch(lane.textContent,/Unconfirmed|Niepotwierdzony|PRIVATE_VALUE_NOT_FOR_COMPARISON/);
+});
+
+test('repeated path ordinals remain separate aligned points on both lanes',async t=>{
+ const f=fixture(t,undefined,req=>{
+  const raw=full(req.run_id,[['repeat/0',0]]);
+  raw.trace['repeat/0'].push({path:'repeat/0',timestamp:stamp(req.run_id==='old'?100:240)});return raw;
+ });await compare(f);
+ const root=f.card.shadowRoot;
+ assert.equal(root.querySelectorAll('[data-comparison-lane="0"] [data-path="repeat/0"]').length,2);
+ assert.equal(root.querySelector('[data-comparison-lane="1"] [data-ordinal="1"]').dataset.offsetMs,'240');
+ assert.match(root.querySelector('[data-comparison-conclusion]').textContent,/repeat\/0 #2.*140/);
+});
+
+test('date System follows browser language while HA labels remain Polish',t=>{
+ const {card}=fixture(t);card._lang='pl';card._hass.language='pl';card._hass.locale={language:'pl',date_format:'system',time_format:'24'};
+ assert.match(card._fmtTime(new Date('2026-01-15T12:00:00Z')),/Jan/);
+ card._hass.locale.date_format='language';assert.match(card._fmtTime(new Date('2026-01-15T12:00:00Z')),/sty/);
+});
+
+test('changing full locale also reorders already loaded automation names without trace reads',t=>{
+ const f=fixture(t);f.card.sortBy='name';f.card._hass.locale={language:'de'};
+ f.card._rawAutomations=['Ä 2','Z 2','A 1'].map(name=>({name,status:'success'}));
+ f.card.hass=f.card._hass;f.card.applyFiltersAndSort();
+ assert.deepEqual(Array.from(f.card.automations,a=>a.name),['A 1','Ä 2','Z 2']);
+ f.card._hass.locale.language='sv';f.card.hass=f.card._hass;
+ assert.deepEqual(Array.from(f.card.automations,a=>a.name),['A 1','Z 2','Ä 2']);assert.equal(f.requests.length,0);
+});
+
+test('reset result locally reapplies complete retained selected bucket and keeps the loaded detail',t=>{
+ const f=fixture(t);const auto={entity:'automation.a',automationId:'a',name:'Automation a'};
+ f.card.viewMode='automations';f.card.selectedAutomation=auto.entity;f.card._rawAutomations=[auto];
+ f.card._traceMap.a={traces:[{...full('retained'),script_execution:'finished'}]};
+ f.card.traceFilterResult='error';f.card.traces=[];const detail=f.card._buildDetail(f.rows[1],full('new'));f.card.traceDetail=detail;f.card.render();
+ f.card.shadowRoot.querySelector('[data-reset-filter="result"]').click();
+ assert.equal(f.card.traces.length,1);assert.equal(f.card.traceDetail,detail);assert.equal(f.requests.length,0);
+ assert.equal(f.card.shadowRoot.activeElement.id,'resSel');
+});
+
+test('two unavailable traces never draw a fabricated zero-time axis',async t=>{
+ const f=fixture(t,undefined,()=>{throw {code:'not_found'};});await compare(f);
+ const root=f.card.shadowRoot;
+ assert.equal(root.querySelectorAll('[data-comparison-lane]').length,2);
+ assert.equal(root.querySelectorAll('.comparison-axis, .comparison-instant').length,0);
+ assert.equal(root.querySelectorAll('[data-offset-ms]').length,0);
+});
