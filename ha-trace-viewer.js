@@ -1,4 +1,4 @@
-/* HA Tools split — ha-trace-viewer v4.2.0 (2026-10-15) — single-tool standalone repo */
+/* HA Tools split — ha-trace-viewer v4.3.0 (2026-10-17) — single-tool standalone repo */
 (function() {
 'use strict';
 
