@@ -2,14 +2,14 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const {JSDOM,VirtualConsole}=require('jsdom');
-function fixture(name='QA Alpha'){
+function fixture(name='QA Alpha',automationId='a'){
  const errors=[],vc=new VirtualConsole();vc.on('jsdomError',error=>errors.push(error));
  const dom=new JSDOM('',{runScripts:'outside-only',url:'https://qa.invalid',virtualConsole:vc});
  dom.window.ResizeObserver=class{observe(){}disconnect(){}};
  dom.window.eval(fs.readFileSync('ha-trace-viewer.js','utf8'));
  const card=dom.window.document.createElement('ha-trace-viewer');card.setConfig({show_support:false});dom.window.document.body.append(card);
- card._hass={language:'en',user:{id:'admin',is_admin:true},connection:{connected:true},states:{'automation.alpha':{state:'on',attributes:{id:'a',friendly_name:name}}},callWS:async()=>[]};
- const raw=finished=>({item_id:'a',run_id:'r',domain:'automation',state:finished?'stopped':'running',script_execution:finished?'finished':'running',timestamp:{start:'2026-10-14T12:00:00Z',...(finished?{finish:'2026-10-14T12:00:01Z'}:{})}});
+ card._hass={language:'en',user:{id:'admin',is_admin:true},connection:{connected:true},states:{'automation.alpha':{state:'on',attributes:{id:automationId,friendly_name:name}}},callWS:async()=>[]};
+ const raw=finished=>({item_id:automationId,run_id:'r',domain:'automation',state:finished?'stopped':'running',script_execution:finished?'finished':'running',timestamp:{start:'2026-10-14T12:00:00Z',...(finished?{finish:'2026-10-14T12:00:01Z'}:{})}});
  return {dom,card,errors,raw,close(){card.remove();dom.window.close();}};
 }
 function deferred(){let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b;});return {promise,resolve,reject};}
@@ -58,5 +58,24 @@ for(const olderError of [false,true])test(`later global refresh completes the se
   assert.equal(f.card._loadingSelected,false);assert.equal(f.card._loadingTraces,false);
   assert.equal(f.card._storedTraces['a::r'].state,'stopped');
   assert.ok(f.card.shadowRoot.querySelector('.tr-item.s-success[data-trace="r"]'));
+ }finally{f.close();}
+});
+
+// Core PLATFORM_SCHEMA accepts string IDs and AutomationTrace returns them unchanged.
+for(const id of ['constructor','toString','__proto__'])test(`Core-valid automation ID ${id} retains global and selected trace results`,async()=>{
+ const f=fixture('QA automation',id);try{
+  f.card._hass.callWS=async()=>[f.raw(true)];
+  await f.card.updateAutomationData();
+  assert.equal(f.card._rawAutomations[0].triggerCount,1);
+  f.card.selectedAutomation='automation.alpha';await f.card._loadTraces('automation.alpha');
+  assert.equal(f.card.traces.length,1);assert.equal(f.card.traces[0].status,'success');
+  assert.ok(f.card.shadowRoot.querySelector('.tr-item.s-success[data-trace="r"]'));
+ }finally{f.close();}
+});
+for(const id of ['constructor','toString','__proto__'])test(`selected-first read caches Core-valid automation ID ${id}`,async()=>{
+ const f=fixture('QA automation',id);try{
+  f.card._hass.callWS=async()=>[f.raw(true)];
+  const bucket=f.card._cacheItemTraces(id,[f.raw(true)]);
+  assert.equal(bucket.count,1);assert.equal(bucket.traces[0].item_id,id);
  }finally{f.close();}
 });
