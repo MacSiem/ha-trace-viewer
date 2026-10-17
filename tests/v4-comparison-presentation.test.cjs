@@ -197,10 +197,10 @@ test('completed comparison survives synchronous HA layout reparent without rerea
  assert.equal(card._comparisonExportable(),true);assert.equal(f.requests.length,2);
 });
 
-test('real removal drops the completed pair and cannot resurrect it on a later attach',async t=>{
+test('removal beyond the current layout task cannot resurrect its completed pair',async t=>{
  const f=fixture(t);await compare(f);f.card.updateAutomationData=async()=>{};
  f.card.remove();assert.equal(f.card._comparisonView,null);
- await new Promise(resolve=>setImmediate(resolve));f.dom.window.document.body.append(f.card);
+ await new Promise(resolve=>f.dom.window.setTimeout(resolve,0));f.dom.window.document.body.append(f.card);
  assert.equal(f.card._comparisonView,null);assert.equal(f.card._comparisonRuns.size,0);
  assert.equal(f.card._comparisonExportable(),false);
 });
@@ -228,4 +228,34 @@ test('filter chip labels use a single separator without placeholder ellipses',t=
  const {card}=fixture(t);card.timeRange='7d';card.traceFilterResult='error';card.searchQuery='example';card.render();
  const chips=[...card.shadowRoot.querySelectorAll('[data-reset-filter]')];
  assert.equal(chips.length,3);for(const chip of chips)assert.doesNotMatch(chip.textContent,/::|\.\.\.:|…:/);
+});
+
+
+test('completed comparison survives HA reparent after a microtask with the same hass source',async t=>{
+ const f=fixture(t);await compare(f);const {card,dom}=f;const result=card._comparisonView.result;
+ card.updateAutomationData=async()=>{throw new Error('HA layout must not refetch');};
+ card.remove();await Promise.resolve();card.hass={...card._hass};
+ dom.window.document.body.append(card);await Promise.resolve();
+ assert.equal(card._comparisonRuns.size,2);assert.equal(card._comparisonView.result,result);
+ assert.equal(card.shadowRoot.querySelectorAll('[data-comparison-lane]').length,2);
+ assert.equal(card._comparisonExportable(),true);assert.equal(f.requests.length,2);
+});
+
+test('offline then online while the same card is detached cannot revive a completed comparison',async t=>{
+ const f=fixture(t);await compare(f);f.card.updateAutomationData=async()=>{};
+ f.card.remove();f.dom.window.dispatchEvent(new f.dom.window.Event('offline'));
+ f.dom.window.dispatchEvent(new f.dom.window.Event('online'));f.dom.window.document.body.append(f.card);
+ assert.equal(f.card._comparisonRuns.size,0);assert.equal(f.card._comparisonView,null);
+ assert.equal(f.card._comparisonExportable(),false);
+});
+
+test('connection disconnect then ready while detached cannot revive a completed comparison',async t=>{
+ const f=fixture(t);const listeners=new Map();
+ f.card._hass.connection={connected:true,addEventListener:(name,fn)=>listeners.set(name,fn),
+   removeEventListener:(name,fn)=>{if(listeners.get(name)===fn)listeners.delete(name);}};
+ f.card._ensureComparisonLifecycle();await compare(f);f.card.updateAutomationData=async()=>{};
+ f.card.remove();f.card._hass.connection.connected=false;listeners.get('disconnected')?.();
+ f.card._hass.connection.connected=true;listeners.get('ready')?.();f.dom.window.document.body.append(f.card);
+ assert.equal(f.card._comparisonRuns.size,0);assert.equal(f.card._comparisonView,null);
+ assert.equal(f.card._comparisonExportable(),false);
 });
