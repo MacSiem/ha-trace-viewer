@@ -1823,7 +1823,7 @@ class HATraceViewer extends HTMLElement {
     this._rawAutomations = [];
     this.traces = [];
     this._allTraces = [];
-    this._traceMap = {};
+    this._traceMap = Object.create(null);
     this._allFlatTraces = [];
 
     // Filters
@@ -2148,7 +2148,7 @@ class HATraceViewer extends HTMLElement {
     if (!hass) { this._cardSurface.innerHTML = this._css(); return; }
     if (firstLoad || roleChanged || sourceChanged) {
       this._allTraces = [];
-      this._traceMap = {};
+      this._traceMap = Object.create(null);
       this.updateAutomationData();
     } else if (hass && previousLanguage !== this._lang) {
       // Detail descriptions are localized when built. Reuse the same source;
@@ -2169,7 +2169,7 @@ class HATraceViewer extends HTMLElement {
     if (!this._hass) return;
     if (!this._hass.user?.is_admin) {
       this._allTraces = [];
-      this._traceMap = {};
+      this._traceMap = Object.create(null);
       this._allFlatTraces = [];
       this._rawAutomations = [];
       this.automations = [];
@@ -2208,7 +2208,7 @@ class HATraceViewer extends HTMLElement {
     // Merge live traces with stored (persisted) traces
     this._allTraces = this._mergeAndStoreTraces(liveTraces);
 
-    this._traceMap = {};
+    this._traceMap = Object.create(null);
     this._allTraces.forEach(t => {
       const key = this._traceKey(t.item_id);
       if (!key) return;

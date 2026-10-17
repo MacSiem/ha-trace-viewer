@@ -40,6 +40,9 @@ jobs:
           npm init -y >/dev/null 2>&1
           npm ci >/dev/null 2>&1
           node .github/smoke.cjs
+      - name: HA frontend review hints
+        continue-on-error: true
+        run: python3 scripts/ha_ci_advisory.py ha-trace-viewer.js
       - name: Trace Viewer regression tests
         run: |
           node tests/test-trace-viewer-regression.js
@@ -49,3 +52,4 @@ jobs:
           node --test tests/locale_lifecycle.test.cjs
           node --test tests/region-support-locale.test.cjs
           node --test tests/export_roles.test.cjs
+          node --test tests/v3-global-refresh-regression.test.cjs

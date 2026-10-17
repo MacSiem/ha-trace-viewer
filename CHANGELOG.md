@@ -5,6 +5,7 @@
 - Review JSON/CSV exports with filename and format controls before saving. Private fields start off; reviewed names, run IDs and timestamps never include raw configuration, variables, tokens or service arguments.
 - Use the same latest-request order for global and selected-automation refreshes, ignore older successes/failures, and clear canceled loading.
 - Render grouping names such as constructor, __proto__ and toString safely.
+- Preserve trace lists for valid automation IDs such as constructor, __proto__ and toString, including global and selected refreshes.
 - Keep actions and navigation accessible in narrow cards, with Polish and English result labels and explicit incomplete data.
 - Preserve title focus and text selection when the dashboard echoes editor configuration; follow the HA language while retaining explicit card language overrides. Translate saved-history and never-triggered labels in Polish.
 - Use the primary card text color for readable flow-diagram labels and durations in both themes; keep status colors on node outlines and icons.
