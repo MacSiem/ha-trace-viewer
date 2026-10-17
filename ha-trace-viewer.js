@@ -4600,10 +4600,20 @@ ${_FAMILY_CONTROL_CSS}
 
   // ============================================================
 
+  _disconnectComparisonLifecycle() {
+    window.removeEventListener('offline', this._comparisonOfflineHandler);
+    window.removeEventListener('online', this._comparisonOnlineHandler);
+    this._comparisonOfflineHandler = null; this._comparisonOnlineHandler = null;
+    this._comparisonConnection?.removeEventListener?.('disconnected', this._comparisonDisconnectedHandler);
+    this._comparisonConnection?.removeEventListener?.('ready', this._comparisonReadyHandler);
+    this._comparisonConnection = null;
+  }
+
   connectedCallback() {
+    clearTimeout(this._comparisonMoveTimer); this._comparisonMoveTimer = null;
     const moved = this._comparisonMove;
     this._comparisonMove = null;
-    // HA reparents the same card synchronously when its responsive layout changes.
+    // HA responsive reparent can cross microtasks within the same layout task.
     // Only that move may retain a completed result; detached requests stay canceled.
     const sameSession = moved && moved.access === this._accessEpoch
       && moved.epoch === this._comparisonEpoch && moved.sourceEpoch === this._comparisonSourceEpoch
@@ -4633,18 +4643,21 @@ ${_FAMILY_CONTROL_CSS}
         access:this._accessEpoch + 1, epoch:this._comparisonEpoch + 1, sourceEpoch:this._comparisonSourceEpoch + 1,
         detailBound:this._comparisonDetailSourceEpoch === this._comparisonSourceEpoch
       } : null;
+    clearTimeout(this._comparisonMoveTimer); this._comparisonMoveTimer = null;
     this._comparisonMove = move;
-    // A real removal expires at the microtask boundary. Never revive a later mount.
-    if (move) queueMicrotask(() => { if (this._comparisonMove === move) this._comparisonMove = null; });
+    // Keep source/offline observation across this task's asynchronous HA render.
+    // At the next task a removed card expires and releases every listener.
+    if (move) this._comparisonMoveTimer = setTimeout(() => {
+      this._comparisonMoveTimer = null;
+      if (this._comparisonMove === move) {
+        this._comparisonMove = null;
+        this._disconnectComparisonLifecycle();
+      }
+    }, 0);
     this._exportDialog?.cancel();
     if (!this._exportHandoff) { this._exportDialog?.destroy(); this._exportDialog = null; }
     this._invalidateComparison(true);
-    window.removeEventListener('offline', this._comparisonOfflineHandler);
-    window.removeEventListener('online', this._comparisonOnlineHandler);
-    this._comparisonOfflineHandler = null; this._comparisonOnlineHandler = null;
-    this._comparisonConnection?.removeEventListener?.('disconnected', this._comparisonDisconnectedHandler);
-    this._comparisonConnection?.removeEventListener?.('ready', this._comparisonReadyHandler);
-    this._comparisonConnection = null;
+    if (!move) this._disconnectComparisonLifecycle();
     this._accessEpoch++; this._traceLoadToken = null; this._detailLoadToken = null;
     _disconnectFamilyNavigation(this);this._familyNavWidth=null;
     // Canceled requests cannot finish their loading state after reconnection.
