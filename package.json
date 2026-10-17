@@ -3,7 +3,9 @@
   "version": "0.0.0-private",
   "private": true,
   "scripts": {
-    "test:smoke": "node .github/smoke.cjs"
+    "test:smoke": "node .github/smoke.cjs",
+    "test": "node --test tests/*.test.cjs && node tests/test-trace-viewer-regression.js",
+    "check:vendors": "node scripts/sync-trace-contract.cjs && node scripts/sync-export-vendors.cjs && node scripts/sync-presentation-vendors.cjs"
   },
   "devDependencies": {
     "jsdom": "24.1.3"

@@ -16,7 +16,7 @@ function fixture(t, rows=[row('old'),row('new',10000)], responder=req=>full(req.
   dom.window.document.body.append(card);
   const requests=[];
   card._hass={language:'en',locale:{time_format:'24'},config:{time_zone:'Asia/Tokyo'},user:{id:'admin',is_admin:true},connection:{connected:true},states:{},callWS:async req=>{requests.push(req);return responder(req);}};
-  card._lang='en';card.viewMode='all-traces';card.groupBy='none';card.traces=rows;card._allFlatTraces=rows;card.render();
+  card._comparisonConnectionState=true;card._lang='en';card.viewMode='all-traces';card.groupBy='none';card.traces=rows;card._allFlatTraces=rows;card.render();
   t.after(()=>{card.remove();dom.window.close();});
   return {card,dom,rows,requests};
 }

@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "files": {
+    "shared/ha-tools-format.js": {
+      "sourceSha256": "74439e388c76e03837890852840a3df6104c8756dfbce6cd5c0bf173903f12a2",
+      "sourceRepo": "MacSiem/ha-tools-email-reports",
+      "sourceCommit": "6b3f674dde7475c2c09c16b3c832f8f3b07a8682"
+    },
+    "shared/ha-tools-lists.js": {
+      "sourceSha256": "f669abcd1c151f99ff2bee1ba93ba508aef1ce93b1fcb7b1cb3a91cf7973296d",
+      "sourceRepo": "MacSiem/ha-tools-email-reports",
+      "sourceCommit": "6b3f674dde7475c2c09c16b3c832f8f3b07a8682"
+    }
+  }
+}

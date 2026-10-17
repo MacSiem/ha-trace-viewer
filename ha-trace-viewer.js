@@ -372,6 +372,114 @@ function createExportDialog(options) {
 }
 // END HA TOOLS EXPORT V3
 
+/* BEGIN INLINE shared/ha-tools-format.js */
+// Localized presentation; raw values remain available to callers for details/export.
+function createFormatUi(language = 'en', timeZone = 'UTC', preferences = {}) {
+  const hourCycle = preferences.hourCycle || 'h23';
+  const dateLanguage = preferences.dateLanguage || language;
+  const stamp = value => typeof value === 'number' ? (Number.isFinite(value) ? value : NaN) : typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) ? Date.parse(value) : NaN;
+  const localized = (value, options, locale = language) => {
+    const time = stamp(value);
+    if (!Number.isFinite(time)) return null;
+    try { return new Intl.DateTimeFormat(locale, {timeZone, ...options}).format(time); } catch (_) { return null; }
+  };
+  const clock = (value, withOffset = false) => localized(value, {hour:'2-digit', minute:'2-digit', hourCycle, ...(withOffset ? {timeZoneName:'shortOffset'} : {})});
+  const date = (value, short = false) => localized(value, {day:'numeric', month:'short', ...(short ? {} : {year:'numeric'})}, dateLanguage);
+  const pointLabel = value => localized(value, {year:'numeric', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit', hourCycle, timeZoneName:'shortOffset'}, dateLanguage);
+  const chartLabels = (values, resolution = 'hour') => {
+    const showDate = resolution === 'day' || values.length > 1 && stamp(values.at(-1)) - stamp(values[0]) >= 86400000;
+    const labels = values.map(value => resolution === 'day' ? date(value, true) : `${showDate ? date(value, true) + ' ' : ''}${clock(value)}`);
+    const counts = new Map();
+    for (const label of labels) counts.set(label, (counts.get(label) || 0) + 1);
+    return labels.map((label, index) => counts.get(label) < 2 ? label : resolution === 'day' ? pointLabel(values[index])
+      : `${showDate ? date(values[index], true) + ' ' : ''}${clock(values[index], true)}`);
+  };
+  const key = JSON.stringify([language, timeZone, hourCycle, dateLanguage]);
+  const numbers = new Intl.NumberFormat(language);
+  const plurals = new Intl.PluralRules(language);
+  const count = (value, forms) => `${numbers.format(value)} ${forms[plurals.select(value)] || forms.other}`;
+  const dateTime = value => {
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T/.test(value)) return null;
+    const time = Date.parse(value);
+    if (!Number.isFinite(time)) return null;
+    try { return new Intl.DateTimeFormat(dateLanguage, {timeZone, dateStyle:'medium', timeStyle:'short', hourCycle}).format(new Date(time)); }
+    catch (_) { return null; }
+  };
+  const range = (from, to) => {
+    const first = Date.parse(from), last = Date.parse(to);
+    if (!Number.isFinite(first) || !Number.isFinite(last) || last < first) return null;
+    try {
+      const day = new Intl.DateTimeFormat(dateLanguage, {timeZone, dateStyle:'medium'});
+      const clock = new Intl.DateTimeFormat(language, {timeZone, hour:'2-digit', minute:'2-digit', hourCycle});
+      return day.format(first) === day.format(last)
+        ? `${day.format(first)} (${clock.format(first)}–${clock.format(last)})`
+        : `${dateTime(from)} – ${dateTime(to)}`;
+    } catch (_) { return null; }
+  };
+  const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const periodMarkup = ({start, end, label, source, measured, expected, unit, details = '', sourceTimeZone = ''}) => {
+    const local = range(start, end);
+    if (!local) return '';
+    const coverage = typeof measured === 'number' && Number.isFinite(measured) && typeof expected === 'number' && Number.isFinite(expected)
+      ? `${numbers.format(measured)}/${numbers.format(expected)} ${unit}` : '';
+    const pl = String(language).startsWith('pl');
+    return `<div class="energy-period-v4" style="overflow-wrap:anywhere"><p data-energy-period-summary>${[source, label, local, coverage, timeZone].filter(Boolean).map(escape).join(' · ')}</p><details data-energy-period-details data-energy-period-key="${escape(start + '|' + end)}"><summary style="min-height:44px;box-sizing:border-box;padding:12px 0;display:list-item;list-style-position:inside;cursor:pointer">${pl ? 'Źródło i szczegóły czasu' : 'Source and time details'}</summary><p>${escape(details)}</p>${sourceTimeZone && sourceTimeZone !== timeZone ? `<p>${escape(pl ? 'Strefa pomiarów i granic okresu' : 'Measurement calendar time zone')}: ${escape(sourceTimeZone)}</p>` : ''}<p>UTC: ${escape(start)} — ${escape(end)}</p></details></div>`;
+  };
+  const capturePeriods = (root, previous, current) => {
+    if (!previous || ['epoch','connection','user'].some(key => previous[key] !== current[key])) return [];
+    return [...root.querySelectorAll('[data-energy-period-key]')].map(element => ({
+      key:element.dataset.energyPeriodKey, open:element.open, focused:root.activeElement === element.querySelector('summary')
+    }));
+  };
+  const restorePeriods = (root, records) => {
+    for (const element of root.querySelectorAll('[data-energy-period-key]')) {
+      const record = records.find(row => row.key === element.dataset.energyPeriodKey);
+      if (!record) continue;
+      element.open = record.open;
+      if (record.focused) element.querySelector('summary')?.focus({preventScroll:true});
+    }
+  };
+  return {timeZone, key, clock, date, pointLabel, chartLabels, number:(value, options)=>options ? new Intl.NumberFormat(language, options).format(value) : numbers.format(value), count, dateTime, range, periodMarkup, capturePeriods, restorePeriods};
+}
+// Presentation follows the HA profile; measurement and tariff calendars remain separate.
+createFormatUi.forHass = hass => {
+  const locale = hass?.locale || {};
+  const systemLanguage = typeof navigator !== 'undefined' ? navigator.language : undefined;
+  const language = locale.language || hass?.language || systemLanguage || 'en';
+  const validZone = value => {
+    if (typeof value !== 'string' || !(value === 'UTC' || value.includes('/')) || /^[+-]/.test(value)) return null;
+    try { new Intl.DateTimeFormat('en', {timeZone:value}).format(0); return value; } catch (_) { return null; }
+  };
+  let systemZone;
+  try { systemZone = validZone(Intl.DateTimeFormat().resolvedOptions().timeZone); } catch (_) {}
+  const serverZone = validZone(hass?.config?.time_zone);
+  const timeZone = (locale.time_zone === 'server' ? serverZone : systemZone) || serverZone || 'UTC';
+  const clockLanguage = locale.time_format === 'system' ? systemLanguage || language : language;
+  const hourCycle = locale.time_format === '12' ? 'h12' : locale.time_format === '24' ? 'h23'
+    : new Intl.DateTimeFormat(clockLanguage, {hour:'numeric'}).resolvedOptions().hourCycle;
+  return createFormatUi(language, timeZone, {hourCycle, dateLanguage:locale.date_format === 'system' ? systemLanguage || language : language});
+};
+/* END INLINE shared/ha-tools-format.js */
+
+/* BEGIN INLINE shared/ha-tools-lists.js */
+// Shared list presentation. No registry writes, storage or global state.
+function createListUi(language = 'en') {
+  const collator = new Intl.Collator(language, {numeric:true, sensitivity:'base'});
+  const compare = (a,b) => collator.compare(String(a ?? ''), String(b ?? ''));
+  const createdAt = value => {
+    if (typeof value === 'number') return Number.isFinite(value) && value > 0 ? value * 1000 : 0;
+    if (typeof value !== 'string' || !value.trim() || /^0(?:\.0+)?$/.test(value.trim())) return 0;
+    const time = Date.parse(value);
+    return Number.isFinite(time) && time > 0 ? time : 0;
+  };
+  const isNew = (value, now = Date.now()) => {
+    const time = createdAt(value);
+    return time > 0 && time <= now && now - time < 7 * 86400000;
+  };
+  return {compare, createdAt, isNew};
+}
+/* END INLINE shared/ha-tools-lists.js */
+
 /* BEGIN INLINE shared/ha-tools-trace-contract.js */
 // Vendored from ha-automation-analyzer 14e297fd841ba6838e6ea31e3346d7cf3d887156.
 // Input SHA256: 0f891270a1d1fc04636e1b8752b8a3856371068a3be98a67797639b566b237b3.
@@ -2117,6 +2225,7 @@ class HATraceViewer extends HTMLElement {
 
   set hass(hass) {
     const previousLanguage = this._lang;
+    const previousFormatKey = this._displayFormatKey;
     try {
       var _bg = (getComputedStyle(this).getPropertyValue('--card-background-color') || getComputedStyle(this).getPropertyValue('--primary-background-color') || '').trim();
       var _d = false;
@@ -2142,6 +2251,7 @@ class HATraceViewer extends HTMLElement {
       this.selectedTraceIds.clear(); this.selectedAutoIds.clear();
     }
     this._hass = hass;
+    this._displayFormatKey = this._formatUi.key;
     this._comparisonConnectionState = hass?.connection?.connected;
     this._ensureComparisonLifecycle();
     this._syncExportContext();
@@ -2150,7 +2260,7 @@ class HATraceViewer extends HTMLElement {
       this._allTraces = [];
       this._traceMap = Object.create(null);
       this.updateAutomationData();
-    } else if (hass && previousLanguage !== this._lang) {
+    } else if (hass && (previousLanguage !== this._lang || previousFormatKey !== this._displayFormatKey)) {
       // Detail descriptions are localized when built. Reuse the same source;
       // switching language must not fetch, select another run or invent a result.
       if (this.traceDetail && !this.traceDetail.unavailable) {
@@ -2327,6 +2437,10 @@ class HATraceViewer extends HTMLElement {
     return traces.filter(t => t.timestamp !== null && Number.isFinite(+t.timestamp) && (!c || t.timestamp >= c) && (!e || t.timestamp <= e));
   }
 
+  get _formatUi() { return createFormatUi.forHass(this._hass || { language: this._lang }); }
+
+  _nameCompare(a, b) { return createListUi(this._hass?.locale?.language || this._hass?.language || this._lang).compare(a, b); }
+
   applyFiltersAndSort() {
     let f = [...this._rawAutomations].filter(a => {
       const ms = a.name.toLowerCase().includes(this.searchQuery.toLowerCase());
@@ -2334,7 +2448,7 @@ class HATraceViewer extends HTMLElement {
       return ms && fs;
     });
     f.sort((a, b) => {
-      if (this.sortBy === 'name') return a.name.localeCompare(b.name);
+      if (this.sortBy === 'name') return this._nameCompare(a.name, b.name);
       if (this.sortBy === 'last_triggered') return (b.lastTriggered?.getTime() || 0) - (a.lastTriggered?.getTime() || 0);
       if (this.sortBy === 'trigger_count') return b.triggerCount - a.triggerCount;
       return 0;
@@ -2359,7 +2473,7 @@ class HATraceViewer extends HTMLElement {
       if (!g[key]) g[key] = { name: key, traces: [], count: 0 };
       g[key].traces.push(t); g[key].count++;
     }
-    return Object.values(g).sort((a, b) => b.count - a.count);
+    return Object.values(g).sort((a, b) => b.count - a.count || this._nameCompare(a.name, b.name));
   }
 
   _stats(traces) {
@@ -2400,20 +2514,18 @@ class HATraceViewer extends HTMLElement {
 
   _fmtDur(ms) {
     if (!Number.isFinite(ms) || ms < 0) return this._lang === 'pl' ? 'Brak pomiaru' : 'Not measured';
-    if (ms < 1000) return `${Math.round(ms)}ms`;
-    if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
-    return `${(ms / 60000).toFixed(1)}m`;
+    const number = (n, digits) => this._formatUi.number(n, { minimumFractionDigits: digits, maximumFractionDigits: digits });
+    if (ms < 1000) return `${number(ms, 0)}ms`;
+    if (ms < 60000) return `${number(ms / 1000, 1)}s`;
+    return `${number(ms / 60000, 1)}m`;
   }
 
   _fmtTime(d) {
-    if (!d || !Number.isFinite(+d)) return this._lang === 'pl' ? 'Brak daty' : 'Date unavailable';
-    return d.toLocaleString(this._lang === 'pl' ? 'pl-PL' : 'en-US', { month: 'long', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const formatted = d == null ? null : this._formatUi.pointLabel(typeof d === 'string' ? d : +d);
+    return formatted || (this._lang === 'pl' ? 'Brak daty' : 'Date unavailable');
   }
 
-  _fmtTimeShort(d) {
-    if (!d || !Number.isFinite(+d)) return this._lang === 'pl' ? 'Brak daty' : 'Date unavailable';
-    return d.toLocaleTimeString(this._lang === 'pl' ? 'pl-PL' : 'en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  }
+  _fmtTimeShort(d) { return this._fmtTime(d); }
 
   // ============================================================
 
@@ -2868,9 +2980,9 @@ class HATraceViewer extends HTMLElement {
   }
 
   _normalizedExportDetail(row) {
-    if (this._comparisonView?.data?.some(run => run.run_id === row.id && run.item_id === row.item_id)
+    if (this._comparisonView?.data?.some(run => run?.run_id === row.id && run.item_id === row.item_id)
       && this._comparisonExportable()) {
-      const data = this._comparisonView.data.find(run => run.run_id === row.id && run.item_id === row.item_id);
+      const data = this._comparisonView.data.find(run => run?.run_id === row.id && run.item_id === row.item_id);
       if (data) return { data, source: 'current_comparison' };
     }
     if (this._comparisonDetailSourceEpoch === this._comparisonSourceEpoch && !this.traceDetail?.unavailable
@@ -3168,6 +3280,27 @@ class HATraceViewer extends HTMLElement {
     focus?.focus({ preventScroll: true });
   }
 
+  _previousRetainedRun(current) {
+    if (!current?.item_id || !current.id || current.timestamp == null || !Number.isFinite(+current.timestamp)) return null;
+    const bucket = this._traceMap[this._traceKey(current.item_id)];
+    const auto = this._rawAutomations.find(a => a.automationId === current.item_id);
+    const retained = (bucket?.traces || []).map(raw => this._traceSummary(raw, auto, current.automationEntity, current.item_id));
+    return [...this._allFlatTraces, ...this.traces, ...retained].filter(run => run.item_id === current.item_id
+      && typeof run.id === 'string' && run.id && run.id !== current.id && run.timestamp != null
+      && Number.isFinite(+run.timestamp) && +run.timestamp < +current.timestamp)
+      .sort((a, b) => +b.timestamp - +a.timestamp || this._comparisonIdentity(a).localeCompare(this._comparisonIdentity(b)))[0] || null;
+  }
+
+  _comparePreviousTrace() {
+    const current = this.traceDetail?.trace, previous = this._previousRetainedRun(current);
+    if (!previous || !this._hass?.user?.is_admin) return;
+    this._invalidateComparison(); this._comparisonRuns.clear();
+    for (const run of [previous, current]) this._comparisonRuns.set(this._comparisonIdentity(run), {
+      id: run.id, item_id: run.item_id, timestamp: new Date(+run.timestamp), automationName: String(run.automationName || run.item_id)
+    });
+    return this._compareSelectedRuns();
+  }
+
   _orderedComparisonRuns() {
     return [...this._comparisonRuns.values()].sort((a, b) => +a.timestamp - +b.timestamp
       || (this._comparisonIdentity(a) < this._comparisonIdentity(b) ? -1 : 1));
@@ -3225,7 +3358,8 @@ class HATraceViewer extends HTMLElement {
         }
         // Retain normalized allowlisted data only. Raw trace/config/variables never enter comparison state/DOM.
         this._comparisonView = { runs, result, exportSource: { access, epoch, sourceEpoch: this._comparisonSourceEpoch, connection, userId }, message: timedOut ? 'timeout' : null,
-          data: capabilities.every(capability => capability.status === 'available') ? capabilities.map(capability => capability.data) : null };
+          data: capabilities.map(capability => capability.status === 'available' ? capability.data : null),
+          capabilities: capabilities.map(capability => capability.status) };
         const focused = this.shadowRoot.activeElement;
         const restoreFocus = focused && this.shadowRoot.querySelector('#traceComparison')?.contains(focused);
         this.render();
@@ -3248,13 +3382,46 @@ class HATraceViewer extends HTMLElement {
     if (!view.result?.data || !view.data) return [];
     // Presentation ordering only: Analyzer remains the sole classifier.
     const recorded = new Map();
-    for (const data of view.data) for (const node of data.nodes) {
+    for (const data of view.data) for (const node of data?.nodes || []) {
       const key = JSON.stringify([node.path, node.ordinal]);
       recorded.set(key, Math.min(recorded.get(key) ?? Infinity, node.offset_ms));
     }
     return Object.entries(view.result.data.nodes).flatMap(([category, nodes]) => nodes.map(node => ({
       ...node, category, offset: recorded.get(JSON.stringify([node.path, node.ordinal]))
     }))).sort((a, b) => a.offset - b.offset || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0) || a.ordinal - b.ordinal);
+  }
+
+  _comparisonLaneRows(view) {
+    const rows = new Map();
+    for (let side = 0; side < 2; side++) for (const node of view.data?.[side]?.nodes || []) {
+      const key = JSON.stringify([node.path, node.ordinal]);
+      if (!rows.has(key)) rows.set(key, { path: node.path, ordinal: node.ordinal, nodes: [null, null], offset: Infinity });
+      const row = rows.get(key); row.nodes[side] = node; row.offset = Math.min(row.offset, node.offset_ms);
+    }
+    return [...rows.values()].sort((a, b) => a.offset - b.offset || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0) || a.ordinal - b.ordinal);
+  }
+
+  _renderComparisonLanes(view, first) {
+    if (!view.data) return '';
+    const rows = this._comparisonLaneRows(view);
+    const max = Math.max(0, ...rows.flatMap(row => row.nodes.filter(Boolean).map(node => node.offset_ms)));
+    // Align both sides by (path, ordinal). These are recorded instants, not action durations.
+    const pageRows = rows.slice(this._comparisonPage * 50, (this._comparisonPage + 1) * 50);
+    const pl = this._lang === 'pl';
+    return `<div class="comparison-lanes" aria-label="${pl ? 'Dwa tory czasu wykonania' : 'Two execution timelines'}">${[0, 1].map(side => `
+      <section data-comparison-lane="${side}" class="comparison-lane" style="grid-row:span ${pageRows.length + 4}"><h4>${this._comparisonText(side === 0 ? 'baseline' : 'current')}</h4>
+      <time>${_esc(this._fmtTime(view.runs[side].timestamp))}</time>
+      <p class="comparison-axis"><span>0 ms</span><span>${_esc(this._formatUi.number(max))} ms</span></p>
+      <p role="status">${!view.data[side] ? this._comparisonText(view.capabilities?.[side] || 'unavailable') : !view.data[side].nodes.length ? this._comparisonText('no_data') : `${view.data[side].nodes.length} ${pl ? 'zapisanych punktów' : 'recorded points'}`}</p>
+      ${pageRows.map(row => {
+        const node = row.nodes[side], isFirst = row.path === first?.path && row.ordinal === first?.ordinal;
+        const instant = node ? this._fmtTime(new Date(+view.runs[side].timestamp + node.offset_ms)) : '';
+        return `<div class="comparison-lane-point ${node ? '' : 'comparison-gap'}" data-path="${_esc(row.path)}" data-ordinal="${row.ordinal}" ${node ? `data-offset-ms="${node.offset_ms}"` : ''} ${isFirst ? 'data-comparison-first="true"' : ''}>
+          <span>${_esc(row.path)} #${row.ordinal + 1}</span>
+          ${node ? `<span class="comparison-instant" title="${_esc(instant)}"><span class="comparison-dot" style="left:${max > 0 ? node.offset_ms / max * 100 : 0}%" aria-hidden="true"></span></span><span>${_esc(this._formatUi.number(node.offset_ms))} ms · ${_esc(this._traceStatusLabel(node.status))}</span><time class="comparison-point-date">${_esc(instant)}</time>`
+            : `<span class="comparison-missing">— ${pl ? 'Brak zapisu' : 'Not recorded'}</span>`}
+        </div>`;
+      }).join('')}</section>`).join('')}</div>`;
   }
 
   _renderComparisonPicker() {
@@ -3287,7 +3454,10 @@ class HATraceViewer extends HTMLElement {
         <button type="button" id="closeComparison" class="comparison-button">${this._comparisonText('close')}</button></div>
       <div class="comparison-records">${records}</div>
       <p role="status">${view.message ? this._comparisonText(view.message) : ''}</p>
-      <p>${this._comparisonText('scope')}</p><p>${this._comparisonText('threshold')}</p><p>${this._comparisonText('order')}</p>
+      <p data-comparison-coverage>${this._lang === 'pl' ? 'Ślady HA / zachowana historia' : 'HA traces / retained history'} · ${view.data?.filter(Boolean).length || 0}/2 ${this._lang === 'pl' ? 'dostępnych śladów' : 'available traces'} · ${points.length} ${this._lang === 'pl' ? 'porównanych punktów' : 'compared points'} · ${_esc(this._formatUi.timeZone)}</p>
+      <details data-comparison-details><summary>${this._lang === 'pl' ? 'Zakres i ograniczenia porównania' : 'Comparison scope and limits'}</summary><p>${this._comparisonText('scope')}</p><p>${this._comparisonText('threshold')}</p><p>${this._comparisonText('order')}</p></details>
+      <p class="comparison-conclusion" data-comparison-conclusion role="status">${first ? `<strong>${this._comparisonText('first')}: ${_esc(first.path)} #${first.ordinal + 1}</strong> · ${this._comparisonText(first.category)}${Object.hasOwn(first, 'delta_ms') ? ` (Δ ${_esc(this._formatUi.number(first.delta_ms))} ms)` : ''}` : result?.data ? this._comparisonText('no_difference') : this._comparisonText(result?.status || 'loading')}</p>
+      ${this._renderComparisonLanes(view, first)}
       ${timing ? `<p>${this._comparisonText('run')}: ${timing.delta_ms === null ? this._comparisonText('unknown') : `${this._comparisonText(timing.classification)} (${_esc(timing.delta_ms)} ms)`}</p>` : ''}
       ${result?.data ? `<div class="comparison-actions">${first ? `<button type="button" id="jumpComparisonDifference" class="comparison-button">${this._comparisonText('jump')}</button>` : `<p>${this._comparisonText('no_difference')}</p>`}</div>
         <p id="comparisonPageStatus" role="status" tabindex="-1">${this._lang === 'pl' ? 'Strona' : 'Page'} ${this._comparisonPage + 1} / ${pages} · ${points.length} ${this._lang === 'pl' ? 'zapisanych punktów' : 'recorded points'}</p>
@@ -3301,6 +3471,31 @@ class HATraceViewer extends HTMLElement {
   _closeComparison() {
     this._invalidateComparison(); this.render();
     this.shadowRoot.querySelector('#compareRuns')?.focus({ preventScroll: true });
+  }
+
+  _renderFilterChips() {
+    const filters = [
+      ['time', this.timeRange !== 'all', this._t('timeRange') + ': ' + this._t('time' + this.timeRange.charAt(0).toUpperCase() + this.timeRange.slice(1))],
+      ['result', this.traceFilterResult !== 'all', this._t('filterByStatus') + ': ' + this._traceStatusLabel(this.traceFilterResult)],
+      ['automation', this.filterStatus !== 'all' && this.viewMode === 'automations', this._t('filterByStatus') + ': ' + this._t('status' + this.filterStatus.charAt(0).toUpperCase() + this.filterStatus.slice(1))],
+      ['search', !!this.searchQuery, this._t('search') + ': ' + this.searchQuery]
+    ];
+    return `<div class="filter-chips">${filters.filter(([,active]) => active).map(([key,,label]) => `<button type="button" class="comparison-button" data-reset-filter="${key}" aria-label="${this._lang === 'pl' ? 'Usuń filtr' : 'Clear filter'}: ${_esc(label)}">${_esc(label)} ×</button>`).join('')}</div>`;
+  }
+
+  _resetFilter(key) {
+    const targets = {time:'timeSel', result:'resSel', automation:'fltSel', search:this.viewMode === 'automations' ? 'autoSearch' : 'trSearch'};
+    if (!Object.hasOwn(targets, key)) return;
+    if (key === 'time') { this.timeRange = 'all'; this.customTimeFrom = null; this.customTimeTo = null; }
+    else if (key === 'result') this.traceFilterResult = 'all';
+    else if (key === 'automation') this.filterStatus = 'all';
+    else this.searchQuery = '';
+    this.tracePage = 0; this.autoPage = 0;
+    const auto = this._rawAutomations.find(a => a.entity === this.selectedAutomation);
+    const bucket = auto && this._traceMap[this._traceKey(auto.automationId)];
+    if (bucket) this._applyTraceBucket(bucket, auto, auto.entity, auto.automationId);
+    this.applyFiltersAndSort(); this._saveCurrentSettings(); this.render();
+    this.shadowRoot.getElementById(targets[key])?.focus({preventScroll:true});
   }
 
   _renderTracesList() {
@@ -3435,6 +3630,9 @@ class HATraceViewer extends HTMLElement {
         </div>
       </div>
 
+      <div class="comparison-previous"><button type="button" class="comparison-button" id="comparePreviousTrace" ${!this._previousRetainedRun(trace) || !this._hass?.user?.is_admin ? 'disabled aria-describedby="previousTraceReason"' : ''}>${this._lang === 'pl' ? 'Porównaj z poprzednim zachowanym przebiegiem' : 'Compare with previous retained run'}</button>
+      ${!this._previousRetainedRun(trace) ? `<p id="previousTraceReason">${this._lang === 'pl' ? 'Brak wcześniejszego zachowanego przebiegu tej automatyzacji.' : 'No earlier retained run of this automation.'}</p>` : ''}</div>
+
       <!-- Flow graph -->
       <div class="det-flow">
         ${this._renderFlowGraph(steps)}
@@ -3537,6 +3735,7 @@ class HATraceViewer extends HTMLElement {
           </div>
         </div>
 
+        ${this._renderFilterChips()}
         <!-- PANELS -->
         <div class="panels">
           ${this.viewMode === 'automations' ? `
@@ -3623,6 +3822,8 @@ class HATraceViewer extends HTMLElement {
       const run = this._comparisonRuns.get(button.dataset.removeComparison);
       if (run) this._toggleComparisonRun(run);
     }));
+    $('#comparePreviousTrace')?.addEventListener('click', () => this._comparePreviousTrace());
+    $$('[data-reset-filter]').forEach(button => button.addEventListener('click', () => this._resetFilter(button.dataset.resetFilter)));
     $('#closeComparison')?.addEventListener('click', () => this._closeComparison());
     $('#traceComparison')?.addEventListener('keydown', event => {
       if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); this._closeComparison(); }
@@ -3818,6 +4019,21 @@ ${createUiV3({ language: this._lang }).css}
 .comparison-points li { display: flex; gap: 8px; flex-wrap: wrap; padding: 12px; overflow-wrap: anywhere; }
 .comparison-first { border: 2px solid var(--bento-primary); border-radius: 8px; background: var(--bento-primary-light); }
 @container (max-width: 500px) { .comparison-records { grid-template-columns: minmax(0, 1fr); } .comparison-points li { flex-direction: column; } }
+.comparison-lanes { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin:12px 0; }
+.comparison-lane { min-width:0; display:grid; grid-template-rows:subgrid; grid-row:span 4; align-content:start; }
+.comparison-lane h4 { margin:0; }
+.comparison-lane time { overflow-wrap:anywhere; }
+.comparison-axis { display:flex; justify-content:space-between; gap:4px; font-size:12px; }
+.comparison-lane-point { min-width:0; overflow-wrap:anywhere; border:1px solid var(--bento-border); border-radius:8px; padding:10px; display:flex; flex-direction:column; gap:6px; min-height:120px; }
+.comparison-lane-point[data-comparison-first="true"], .comparison-conclusion { border:2px solid var(--bento-primary); border-radius:8px; background:var(--bento-primary-light); padding:10px; }
+.comparison-instant { position:relative; display:block; margin:6px 5px; height:2px; background:var(--bento-border); }
+.comparison-dot { position:absolute; width:10px; height:10px; top:50%; transform:translate(-50%,-50%); border-radius:50%; background:var(--bento-primary); }
+.comparison-gap { border-style:dashed; }
+.comparison-point-date { font-size:11px; color:var(--bento-text-secondary); }
+.filter-chips { display:flex; gap:8px; flex-wrap:wrap; }
+.comparison-previous { margin:8px 0; }
+[data-comparison-details] summary { min-height:44px; padding:12px 0; cursor:pointer; }
+.card button:not(.support-dismiss), .card select, .card input:not([type="checkbox"]) { min-height:44px; box-sizing:border-box; }
 /* === HA Tools split — premium banners (donate / intro / prereq) === */
 
 /* Donation footer — diamond top */
