@@ -44,20 +44,48 @@ automations need an `id` for traces. See the
 | Trace detail timeline + flow view | Exporting traces to JSON / CSV |
 | View preferences remembered | Raising `stored_traces` for more history |
 
+## Comparing retained runs
+
+Open a run and choose **Compare with previous retained run** to compare it with
+this automation's nearest earlier retained run. This searches the available
+history independently of the active filters. It does not imply that Home
+Assistant retained every execution. You can also select two runs manually.
+
+The two timelines show recorded execution points on a shared elapsed-time axis.
+Matching paths and repeated-point ordinals line up across both runs. The first
+confirmed difference is outlined, with the conclusion above the point list.
+**Not recorded** is a gap, not a zero. The spacing between points does not prove
+how long an action took, and variable values and configuration are not compared.
+Expand **Comparison scope and limits** for the source, coverage and timing rules.
+Unavailable or incomplete traces stay explicit and cannot produce a complete
+comparison export. Long comparisons are paged; **Jump to first difference** also
+opens the relevant page.
+
+Dates and times in lists, details and timelines follow your browser/system time
+zone by default. An explicit Home Assistant profile choice for server time or
+12/24-hour display takes precedence. Date display can follow the system locale;
+Polish and English labels remain in the selected Home Assistant language. Time
+zone offsets distinguish repeated times at daylight-saving changes. Elapsed
+milliseconds and exported source timestamps keep their original meaning.
+
+Active filter buttons show the current scope. Clear one to reset only that
+criterion and return focus to its control.
+
 ## Screenshots
 
 | Light | Dark |
 |---|---|
-| ![Traces, light theme](docs/screenshots/card-traces-light-4.2.0.png) | ![Traces, dark theme](docs/screenshots/card-traces-dark-4.2.0.png) |
+| ![Traces, light theme](docs/screenshots/card-traces-light-4.3.0.jpg) | ![Traces, dark theme](docs/screenshots/card-traces-dark-4.3.0.jpg) |
 
-*Version 4.2.0 with synthetic demonstration data in a wide card: automation selection,
-run statistics, timeline and preserved detail tabs. Dark mode follows your Home
-Assistant theme. No household trace is shown.*
+*Version 4.3.0 with harmless test automations in a real Home Assistant instance:
+automation selection, run statistics and preserved detail tabs. Dark mode follows
+your Home Assistant theme. No household trace is shown.*
 
-![Comparison of two selected runs](docs/screenshots/card-comparison-4.2.0.png)
+![Comparison of two selected runs](docs/screenshots/card-comparison-4.3.0.jpg)
 
-*The older baseline and newer run show the first recorded timing difference, the
-comparison threshold and its limits. Variable values and configuration are not compared.*
+*Two elapsed timelines keep recorded points aligned. The outlined first difference
+and the point list use the same Analyzer comparison. Missing points remain gaps;
+the expandable source and limits explain what can be concluded.*
 
 ## Installation
 

@@ -1,0 +1,39 @@
+{
+  "version": "4.3.0",
+  "runtime_source_commit": "aa02af514c3532b7391df4929340fbcc695def7b",
+  "javascript_sha256": "55366dc7a71cc3a7e5fff28249839b49af4a72a394529a9f09fff8c5e3ef39ee",
+  "capture_date": "2026-10-17",
+  "browser": "Actual Chrome, native Page.captureScreenshot, JPEG quality90; viewport1920x1400; normal100%zoom",
+  "surface": "Home Assistant staging; one owned panel view; current HACS candidate",
+  "data": "Two harmless actual Core test runs using variables and bounded delay. No household trace or private data. Classifier and offsets are actual runtime results.",
+  "capture": "Direct browser pixels with a capture rectangle; no generation, compositing or image editing. Waited for stable visible tab opacity1. Comparison clip uses page coordinates after visible user scrolling.",
+  "files": [
+    {
+      "file": "card-traces-light-4.3.0.jpg",
+      "bytes": 143827,
+      "sha256": "3d936703e6acacdf704115d1a8800fe469d13e149264bb7df42480ec41d9717b",
+      "width": 1664,
+      "height": 1171,
+      "format": "JPEG",
+      "theme": "light"
+    },
+    {
+      "file": "card-traces-dark-4.3.0.jpg",
+      "bytes": 140892,
+      "sha256": "67adc2c774c12a21e67e49819ec79a3c919a1c78aed6299735ac39e269368111",
+      "width": 1664,
+      "height": 1171,
+      "format": "JPEG",
+      "theme": "dark"
+    },
+    {
+      "file": "card-comparison-4.3.0.jpg",
+      "bytes": 174338,
+      "sha256": "aac2f792ec91b9e16edbad8c97e1aa2ab8b5e4022996ec027fa1f07f7d43f844",
+      "width": 1662,
+      "height": 1263,
+      "format": "JPEG",
+      "theme": "light"
+    }
+  ]
+}

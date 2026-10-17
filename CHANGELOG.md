@@ -1,3 +1,14 @@
+## 4.3.0 (2026-10-17)
+
+- Show two aligned execution timelines from the shared Analyzer comparison, with actual elapsed offsets, explicit gaps and an outlined first difference above the preserved point list.
+- Compare an opened run with the nearest earlier retained run of the same automation in one click, independently of filters; explain when no earlier run is available.
+- Display friendly dates in lists, details and timelines using the user's system time zone by default, with explicit Home Assistant server/clock preferences and daylight-saving offsets.
+- Keep comparison source and coverage compact, with the complete timing and interpretation limits available on demand. Keep partial traces explicit and page long available timelines.
+- Add individual active-filter resets and natural locale-aware name sorting while preserving run chronology and cached data.
+- Preserve native touch controls, keyboard navigation and readable Polish/English status labels in narrow cards and wide panels.
+- Keep completed comparisons through Home Assistant's responsive reparent while canceling detached requests and retaining role, source and offline invalidation. Clear the visible search draft when its filter is reset.
+- Preserve trace history for reserved automation IDs such as constructor, toString and __proto__.
+
 ## 4.2.0 (2026-10-15)
 
 - Compare two chosen executions using the shared Analyzer trace contract. Show the first confirmed difference in recorded execution points, outcomes and timing; keep unavailable details explicit.
