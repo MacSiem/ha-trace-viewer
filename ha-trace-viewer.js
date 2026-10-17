@@ -2261,6 +2261,7 @@ class HATraceViewer extends HTMLElement {
       this._traceMap = Object.create(null);
       this.updateAutomationData();
     } else if (hass && (previousLanguage !== this._lang || previousFormatKey !== this._displayFormatKey)) {
+      this.applyFiltersAndSort();
       // Detail descriptions are localized when built. Reuse the same source;
       // switching language must not fetch, select another run or invent a result.
       if (this.traceDetail && !this.traceDetail.unavailable) {
@@ -3391,6 +3392,12 @@ class HATraceViewer extends HTMLElement {
     }))).sort((a, b) => a.offset - b.offset || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0) || a.ordinal - b.ordinal);
   }
 
+  _comparisonPointStatus(status) {
+    const labels = {pass:['Zapisany punkt','Recorded point'], error:['Błąd punktu','Point error'],
+      changed:['Zmiana zmiennych','Variables changed'], skipped:['Pominięty','Skipped']};
+    return labels[status]?.[this._lang === 'pl' ? 0 : 1] || (this._lang === 'pl' ? 'Brak statusu punktu' : 'Point status unavailable');
+  }
+
   _comparisonLaneRows(view) {
     const rows = new Map();
     for (let side = 0; side < 2; side++) for (const node of view.data?.[side]?.nodes || []) {
@@ -3411,14 +3418,14 @@ class HATraceViewer extends HTMLElement {
     return `<div class="comparison-lanes" aria-label="${pl ? 'Dwa tory czasu wykonania' : 'Two execution timelines'}">${[0, 1].map(side => `
       <section data-comparison-lane="${side}" class="comparison-lane" style="grid-row:span ${pageRows.length + 4}"><h4>${this._comparisonText(side === 0 ? 'baseline' : 'current')}</h4>
       <time>${_esc(this._fmtTime(view.runs[side].timestamp))}</time>
-      <p class="comparison-axis"><span>0 ms</span><span>${_esc(this._formatUi.number(max))} ms</span></p>
+      ${rows.length ? `<p class="comparison-axis"><span>0 ms</span><span>${_esc(this._formatUi.number(max))} ms</span></p>` : `<p>${this._comparisonText('no_data')}</p>`}
       <p role="status">${!view.data[side] ? this._comparisonText(view.capabilities?.[side] || 'unavailable') : !view.data[side].nodes.length ? this._comparisonText('no_data') : `${view.data[side].nodes.length} ${pl ? 'zapisanych punktów' : 'recorded points'}`}</p>
       ${pageRows.map(row => {
         const node = row.nodes[side], isFirst = row.path === first?.path && row.ordinal === first?.ordinal;
         const instant = node ? this._fmtTime(new Date(+view.runs[side].timestamp + node.offset_ms)) : '';
         return `<div class="comparison-lane-point ${node ? '' : 'comparison-gap'}" data-path="${_esc(row.path)}" data-ordinal="${row.ordinal}" ${node ? `data-offset-ms="${node.offset_ms}"` : ''} ${isFirst ? 'data-comparison-first="true"' : ''}>
           <span>${_esc(row.path)} #${row.ordinal + 1}</span>
-          ${node ? `<span class="comparison-instant" title="${_esc(instant)}"><span class="comparison-dot" style="left:${max > 0 ? node.offset_ms / max * 100 : 0}%" aria-hidden="true"></span></span><span>${_esc(this._formatUi.number(node.offset_ms))} ms · ${_esc(this._traceStatusLabel(node.status))}</span><time class="comparison-point-date">${_esc(instant)}</time>`
+          ${node ? `<span class="comparison-instant" title="${_esc(instant)}"><span class="comparison-dot" style="left:${max > 0 ? node.offset_ms / max * 100 : 0}%" aria-hidden="true"></span></span><span>${_esc(this._formatUi.number(node.offset_ms))} ms · ${_esc(this._comparisonPointStatus(node.status))}</span><time class="comparison-point-date">${_esc(instant)}</time>`
             : `<span class="comparison-missing">— ${pl ? 'Brak zapisu' : 'Not recorded'}</span>`}
         </div>`;
       }).join('')}</section>`).join('')}</div>`;
@@ -3442,7 +3449,8 @@ class HATraceViewer extends HTMLElement {
     const result = view.result;
     const points = this._comparisonPoints(view);
     const first = points.find(point => point.category !== 'unchanged');
-    const pages = Math.max(1, Math.ceil(points.length / 50));
+    const rowCount = this._comparisonLaneRows(view).length;
+    const pages = Math.max(1, Math.ceil(rowCount / 50));
     this._comparisonPage = Math.min(this._comparisonPage || 0, pages - 1);
     const shown = points.slice(this._comparisonPage * 50, (this._comparisonPage + 1) * 50);
     const records = view.runs.map((run, index) => `<div class="comparison-record"><strong>${this._comparisonText(index === 0 ? 'baseline' : 'current')}</strong>
@@ -3457,11 +3465,12 @@ class HATraceViewer extends HTMLElement {
       <p data-comparison-coverage>${this._lang === 'pl' ? 'Ślady HA / zachowana historia' : 'HA traces / retained history'} · ${view.data?.filter(Boolean).length || 0}/2 ${this._lang === 'pl' ? 'dostępnych śladów' : 'available traces'} · ${points.length} ${this._lang === 'pl' ? 'porównanych punktów' : 'compared points'} · ${_esc(this._formatUi.timeZone)}</p>
       <details data-comparison-details><summary>${this._lang === 'pl' ? 'Zakres i ograniczenia porównania' : 'Comparison scope and limits'}</summary><p>${this._comparisonText('scope')}</p><p>${this._comparisonText('threshold')}</p><p>${this._comparisonText('order')}</p></details>
       <p class="comparison-conclusion" data-comparison-conclusion role="status">${first ? `<strong>${this._comparisonText('first')}: ${_esc(first.path)} #${first.ordinal + 1}</strong> · ${this._comparisonText(first.category)}${Object.hasOwn(first, 'delta_ms') ? ` (Δ ${_esc(this._formatUi.number(first.delta_ms))} ms)` : ''}` : result?.data ? this._comparisonText('no_difference') : this._comparisonText(result?.status || 'loading')}</p>
+      ${view.data ? `        <p id="comparisonPageStatus" role="status" tabindex="-1">${this._lang === 'pl' ? 'Strona' : 'Page'} ${this._comparisonPage + 1} / ${pages} · ${rowCount} ${this._lang === 'pl' ? 'zapisanych punktów' : 'recorded points'}</p>
+        ${pages > 1 ? `<nav class="comparison-actions" aria-label="${this._lang === 'pl' ? 'Strony punktów porównania' : 'Comparison point pages'}"><button type="button" id="comparisonPrevious" class="comparison-button" ${this._comparisonPage === 0 ? 'disabled' : ''}>${this._comparisonText('previous')}</button><button type="button" id="comparisonNext" class="comparison-button" ${this._comparisonPage === pages - 1 ? 'disabled' : ''}>${this._comparisonText('next')}</button></nav>` : ''}
+` : ''}
       ${this._renderComparisonLanes(view, first)}
       ${timing ? `<p>${this._comparisonText('run')}: ${timing.delta_ms === null ? this._comparisonText('unknown') : `${this._comparisonText(timing.classification)} (${_esc(timing.delta_ms)} ms)`}</p>` : ''}
       ${result?.data ? `<div class="comparison-actions">${first ? `<button type="button" id="jumpComparisonDifference" class="comparison-button">${this._comparisonText('jump')}</button>` : `<p>${this._comparisonText('no_difference')}</p>`}</div>
-        <p id="comparisonPageStatus" role="status" tabindex="-1">${this._lang === 'pl' ? 'Strona' : 'Page'} ${this._comparisonPage + 1} / ${pages} · ${points.length} ${this._lang === 'pl' ? 'zapisanych punktów' : 'recorded points'}</p>
-        ${pages > 1 ? `<nav class="comparison-actions" aria-label="${this._lang === 'pl' ? 'Strony punktów porównania' : 'Comparison point pages'}"><button type="button" id="comparisonPrevious" class="comparison-button" ${this._comparisonPage === 0 ? 'disabled' : ''}>${this._comparisonText('previous')}</button><button type="button" id="comparisonNext" class="comparison-button" ${this._comparisonPage === pages - 1 ? 'disabled' : ''}>${this._comparisonText('next')}</button></nav>` : ''}
         <ul class="comparison-points">${shown.map(point => `<li ${point.path === first?.path && point.ordinal === first?.ordinal ? 'id="comparisonFirstDifference" tabindex="-1" class="comparison-first"' : ''}>
           ${point.path === first?.path && point.ordinal === first?.ordinal ? `<strong>${this._comparisonText('first')}: </strong>` : ''}<span>${_esc(point.path)} #${point.ordinal + 1}</span>
           <span>${this._comparisonText(point.category)}</span><span>${_esc(point.offset)} ms${Object.hasOwn(point, 'delta_ms') ? ` (Δ ${_esc(point.delta_ms)} ms)` : ''}</span></li>`).join('')}</ul>` : ''}
@@ -3838,7 +3847,7 @@ class HATraceViewer extends HTMLElement {
       first?.scrollIntoView?.({ block: 'nearest' });
     });
     for (const [id, offset] of [['comparisonPrevious', -1], ['comparisonNext', 1]]) $('#'+id)?.addEventListener('click', () => {
-      const pages = Math.max(1, Math.ceil(this._comparisonPoints(this._comparisonView).length / 50));
+      const pages = Math.max(1, Math.ceil(this._comparisonLaneRows(this._comparisonView).length / 50));
       this._comparisonPage = Math.max(0, Math.min(pages - 1, this._comparisonPage + offset)); this.render();
       const focus = $('#'+id); (focus && !focus.disabled ? focus : $('#comparisonPageStatus'))?.focus({ preventScroll: true });
     });
