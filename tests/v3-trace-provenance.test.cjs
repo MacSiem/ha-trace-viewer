@@ -6,8 +6,10 @@ const {spawnSync} = require('node:child_process');
 const root = path.resolve(__dirname,'..');
 
 test('maintained trace vendor check rejects drift and restores only the shared factory', () => {
-  assert.ok(process.env.TMPDIR?.startsWith('/Volumes/Samsung_SSD/'));
-  const fixture = fs.mkdtempSync(path.join(process.env.TMPDIR,'trace-vendor-'));
+  // The local owner supplies SSD TMPDIR; hosted CI uses its own ephemeral runner temp.
+  const tempRoot = process.env.TMPDIR || require('node:os').tmpdir();
+  assert.ok(path.isAbsolute(tempRoot));
+  const fixture = fs.mkdtempSync(path.join(tempRoot,'trace-vendor-'));
   fs.mkdirSync(path.join(fixture,'shared'));
   for(const file of ['ha-trace-viewer.js','shared/ha-tools-trace-contract.js']) fs.copyFileSync(path.join(root,file),path.join(fixture,file));
   const script = path.join(root,'scripts/sync-trace-contract.cjs');
