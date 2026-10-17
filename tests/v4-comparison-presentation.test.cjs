@@ -186,3 +186,46 @@ test('two unavailable traces never draw a fabricated zero-time axis',async t=>{
  assert.equal(root.querySelectorAll('.comparison-axis, .comparison-instant').length,0);
  assert.equal(root.querySelectorAll('[data-offset-ms]').length,0);
 });
+
+test('completed comparison survives synchronous HA layout reparent without rereading traces',async t=>{
+ const f=fixture(t);await compare(f);const {card,dom}=f;const result=card._comparisonView.result;
+ card.updateAutomationData=async()=>{throw new Error('layout move must not refetch');};
+ const target=dom.window.document.createElement('section');dom.window.document.body.append(target);
+ target.append(card);await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(card._comparisonRuns.size,2);assert.equal(card._comparisonView.result,result);
+ assert.equal(card.shadowRoot.querySelectorAll('[data-comparison-lane]').length,2);
+ assert.equal(card._comparisonExportable(),true);assert.equal(f.requests.length,2);
+});
+
+test('real removal drops the completed pair and cannot resurrect it on a later attach',async t=>{
+ const f=fixture(t);await compare(f);f.card.updateAutomationData=async()=>{};
+ f.card.remove();assert.equal(f.card._comparisonView,null);
+ await new Promise(resolve=>setImmediate(resolve));f.dom.window.document.body.append(f.card);
+ assert.equal(f.card._comparisonView,null);assert.equal(f.card._comparisonRuns.size,0);
+ assert.equal(f.card._comparisonExportable(),false);
+});
+
+test('layout move cannot carry a completed comparison across a role change',async t=>{
+ const f=fixture(t);await compare(f);f.card.updateAutomationData=async()=>{};
+ f.card.remove();f.card.hass={...f.card._hass,user:{id:'household',is_admin:false}};
+ f.dom.window.document.body.append(f.card);await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(f.card._comparisonRuns.size,0);assert.equal(f.card._comparisonView,null);
+ assert.equal(f.card.shadowRoot.querySelector('#comparePreviousTrace'),null);
+ assert.equal(f.card._comparisonExportable(),false);
+});
+
+for(const mode of ['automations','all-traces']) test(`search chip clears the visible ${mode} draft and keeps other filters`,t=>{
+ const f=fixture(t);const {card,dom}=f;card.viewMode=mode;card.timeRange='7d';card.searchQuery='stale query';card.render();
+ const id=mode==='automations'?'autoSearch':'trSearch';const input=card.shadowRoot.getElementById(id);
+ input.value='stale query';input.focus();input.setSelectionRange(2,4);
+ card.shadowRoot.querySelector('[data-reset-filter="search"]').click();
+ assert.equal(card.searchQuery,'');assert.equal(card.shadowRoot.getElementById(id).value,'');
+ assert.equal(card.timeRange,'7d');assert.equal(card.shadowRoot.activeElement.id,id);
+ assert.equal(card.shadowRoot.querySelector('[data-reset-filter="search"]'),null);assert.equal(f.requests.length,0);
+});
+
+test('filter chip labels use a single separator without placeholder ellipses',t=>{
+ const {card}=fixture(t);card.timeRange='7d';card.traceFilterResult='error';card.searchQuery='example';card.render();
+ const chips=[...card.shadowRoot.querySelectorAll('[data-reset-filter]')];
+ assert.equal(chips.length,3);for(const chip of chips)assert.doesNotMatch(chip.textContent,/::|\.\.\.:|…:/);
+});
