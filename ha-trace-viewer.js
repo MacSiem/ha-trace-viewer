@@ -3483,11 +3483,12 @@ class HATraceViewer extends HTMLElement {
   }
 
   _renderFilterChips() {
+    const label = key => this._t(key).replace(/[:.…\s]+$/u, '');
     const filters = [
-      ['time', this.timeRange !== 'all', this._t('timeRange') + ': ' + this._t('time' + this.timeRange.charAt(0).toUpperCase() + this.timeRange.slice(1))],
-      ['result', this.traceFilterResult !== 'all', this._t('filterByStatus') + ': ' + this._traceStatusLabel(this.traceFilterResult)],
-      ['automation', this.filterStatus !== 'all' && this.viewMode === 'automations', this._t('filterByStatus') + ': ' + this._t('status' + this.filterStatus.charAt(0).toUpperCase() + this.filterStatus.slice(1))],
-      ['search', !!this.searchQuery, this._t('search') + ': ' + this.searchQuery]
+      ['time', this.timeRange !== 'all', label('timeRange') + ': ' + this._t('time' + this.timeRange.charAt(0).toUpperCase() + this.timeRange.slice(1))],
+      ['result', this.traceFilterResult !== 'all', label('filterByStatus') + ': ' + this._traceStatusLabel(this.traceFilterResult)],
+      ['automation', this.filterStatus !== 'all' && this.viewMode === 'automations', label('filterByStatus') + ': ' + this._t('status' + this.filterStatus.charAt(0).toUpperCase() + this.filterStatus.slice(1))],
+      ['search', !!this.searchQuery, label('search') + ': ' + this.searchQuery]
     ];
     return `<div class="filter-chips">${filters.filter(([,active]) => active).map(([key,,label]) => `<button type="button" class="comparison-button" data-reset-filter="${key}" aria-label="${this._lang === 'pl' ? 'Usuń filtr' : 'Clear filter'}: ${_esc(label)}">${_esc(label)} ×</button>`).join('')}</div>`;
   }
@@ -3498,7 +3499,12 @@ class HATraceViewer extends HTMLElement {
     if (key === 'time') { this.timeRange = 'all'; this.customTimeFrom = null; this.customTimeTo = null; }
     else if (key === 'result') this.traceFilterResult = 'all';
     else if (key === 'automation') this.filterStatus = 'all';
-    else this.searchQuery = '';
+    else {
+      this.searchQuery = '';
+      // Explicit reset wins over the generic draft-preservation pass in render().
+      const input = this.shadowRoot.getElementById(targets.search);
+      if (input) input.value = '';
+    }
     this.tracePage = 0; this.autoPage = 0;
     const auto = this._rawAutomations.find(a => a.entity === this.selectedAutomation);
     const bucket = auto && this._traceMap[this._traceKey(auto.automationId)];
@@ -4595,13 +4601,40 @@ ${_FAMILY_CONTROL_CSS}
   // ============================================================
 
   connectedCallback() {
-    if (this._hass) this.updateAutomationData();
+    const moved = this._comparisonMove;
+    this._comparisonMove = null;
+    // HA reparents the same card synchronously when its responsive layout changes.
+    // Only that move may retain a completed result; detached requests stay canceled.
+    const sameSession = moved && moved.access === this._accessEpoch
+      && moved.epoch === this._comparisonEpoch && moved.sourceEpoch === this._comparisonSourceEpoch
+      && moved.connection === this._hass?.connection && moved.userId === this._hass?.user?.id
+      && this._hass?.user?.is_admin && this._hass?.connection?.connected !== false && navigator.onLine !== false;
+    if (sameSession) {
+      this._comparisonRuns = moved.runs;
+      this._comparisonView = moved.view;
+      this._comparisonPage = moved.page;
+      if (moved.detailBound) this._comparisonDetailSourceEpoch = this._comparisonSourceEpoch;
+      if (moved.view?.exportSource) moved.view.exportSource = { ...moved.view.exportSource,
+        access:this._accessEpoch, epoch:this._comparisonEpoch, sourceEpoch:this._comparisonSourceEpoch };
+      this._ensureComparisonLifecycle();
+      this.render(); this._startTimer();
+    } else if (this._hass) this.updateAutomationData();
     // ResizeObserver for mobile view in small dashboard cards
     this._resizeObserver = new ResizeObserver(() => this._applyCompactClasses());
     this._resizeObserver.observe(this);
     _bindFamilyNavigation(this);
   }
   disconnectedCallback() {
+    const move = !this.isConnected && !this._comparisonPending && this._comparisonRuns.size
+      && this._hass?.user?.is_admin ? {
+        runs:new Map(this._comparisonRuns), view:this._comparisonView, page:this._comparisonPage,
+        connection:this._hass.connection, userId:this._hass.user.id,
+        access:this._accessEpoch + 1, epoch:this._comparisonEpoch + 1, sourceEpoch:this._comparisonSourceEpoch + 1,
+        detailBound:this._comparisonDetailSourceEpoch === this._comparisonSourceEpoch
+      } : null;
+    this._comparisonMove = move;
+    // A real removal expires at the microtask boundary. Never revive a later mount.
+    if (move) queueMicrotask(() => { if (this._comparisonMove === move) this._comparisonMove = null; });
     this._exportDialog?.cancel();
     if (!this._exportHandoff) { this._exportDialog?.destroy(); this._exportDialog = null; }
     this._invalidateComparison(true);
