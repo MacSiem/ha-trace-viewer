@@ -60,3 +60,22 @@ test('CSV quotes and formula defense cover strings while preserving numeric delt
  const f=setup(t);for(const value of ['=1+1',' +1','-1','@call','\tvalue','\nvalue'])assert.equal(f.card._csvCell(value),'"\''+value+'"');
  assert.equal(f.card._csvCell('say "hi", now\nnext'),'"say ""hi"", now\nnext"');assert.equal(f.card._csvCell(-20),'-20');
 });
+
+
+test('CSV formula guard handles invisible prefixes without changing ordinary labels',t=>{
+ const f=setup(t);
+ for(const value of ['\u200B=1+1','\u200E+2','\u2060-3','\u202E@SUM(1,1)','\u200B \t=9']){
+  assert.equal(f.card._csvCell(value),'"\''+value+'"');
+ }
+ assert.equal(f.card._csvCell('\u200BOrdinary'),'"\u200BOrdinary"');
+ assert.equal(f.card._csvCell(-20),'-20');
+});
+test('active private CSV preview protects a formula-looking automation label',async t=>{
+ const f=setup(t);
+ f.row.automationName='\u200B=1+1';
+ f.card._export('csv',false);await flush();
+ f.field('private').click();f.field('refresh').click();await flush();
+ const preview=f.field('preview').textContent;
+ assert(preview.includes('"\'\u200B=1+1"'),'quoted private metadata must receive a leading apostrophe');
+ assert.equal(f.reads(),0,'export preview is local only');
+});
