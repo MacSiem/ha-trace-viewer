@@ -1,4 +1,4 @@
-/* HA Tools split — ha-trace-viewer v4.3.0 (2026-10-17) — single-tool standalone repo */
+/* HA Tools split — ha-trace-viewer v4.3.1 (2026-10-30) — single-tool standalone repo */
 (function() {
 'use strict';
 
@@ -2894,7 +2894,10 @@ class HATraceViewer extends HTMLElement {
   _csvCell(value) {
     if (typeof value === 'number' && Number.isFinite(value)) return String(value);
     let text = String(value ?? '');
-    if (/^[\s\u0000-\u001f]*[=+\-@]/.test(text) || /^[\t\r\n]/.test(text)) text = "'" + text;
+    // Some spreadsheet importers ignore leading format/zero-width controls.
+    // Preserve the user's label, but neutralize a formula token after those controls.
+    if (/^[\s\u0000-\u001f\u00ad\u034f\u061c\u180e\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff]*[=+\-@]/.test(text)
+      || /^[\t\r\n]/.test(text)) text = "'" + text;
     return '"' + text.replace(/"/g, '""') + '"';
   }
 

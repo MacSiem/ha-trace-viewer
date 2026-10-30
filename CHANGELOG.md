@@ -1,3 +1,7 @@
+## 4.3.1 (2026-10-30)
+
+- Protect CSV exports against formulas hidden behind invisible characters. A value that starts with zero-width, direction or other format controls before `=`, `+`, `-` or `@` now gets the same leading apostrophe as a visible formula; ordinary labels are unchanged.
+
 ## 4.3.0 (2026-10-17)
 
 - Show two aligned execution timelines from the shared Analyzer comparison, with actual elapsed offsets, explicit gaps and an outlined first difference above the preserved point list.
